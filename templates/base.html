@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XLSense Dashboard</title>
     <style>
         :root {
@@ -13,14 +12,14 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
             background-color: #f4f7f6;
         }
 
-        /* Sidebar Styling */
+        /* Sidebar */
         .sidebar {
             width: var(--sidebar-width);
             background-color: var(--primary-color);
@@ -28,14 +27,11 @@
             display: flex;
             flex-direction: column;
             padding: 20px 0;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
         }
 
         .sidebar h2 {
             text-align: center;
             margin-bottom: 30px;
-            font-size: 1.5rem;
-            letter-spacing: 1px;
         }
 
         .sidebar-nav {
@@ -47,20 +43,15 @@
             text-decoration: none;
             color: var(--text-light);
             display: block;
-            transition: 0.3s;
-            border-left: 4px solid transparent;
         }
 
-        .nav-item:hover, .nav-item.active {
+        .nav-item:hover {
             background-color: #34495e;
-            border-left: 4px solid var(--accent-color);
         }
 
-        /* Main Content Area */
         .main-content {
             flex: 1;
             padding: 30px;
-            overflow-y: auto;
         }
 
         .top-bar {
@@ -68,33 +59,36 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
-            padding-bottom: 10px;
             border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
         }
     </style>
 </head>
 <body>
 
-    <nav class="sidebar">
-        <h2>XLSense</h2>
-        <div class="sidebar-nav">
-            <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
-<a href="{% url 'manage_templates' %}" class="nav-item">Manage Templates</a>
-            <a href="#" class="nav-item">Domain Mapping</a>
-            <a href="#" class="nav-item">Upload History</a>
-        </div>
-        <a href="#" class="nav-item" style="margin-top: auto; border: none; color: #e74c3c;">Logout</a>
-    </nav>
+<nav class="sidebar">
+    <h2>XLSense</h2>
 
-    <div class="main-content">
-        <div class="top-bar">
-            <h1>{% block title %}Overview{% endblock %}</h1>
-            <div>Welcome, <strong>{{ user.username }}</strong></div>
-        </div>
-        
-        {% block content %}
-        {% endblock %}
+    <div class="sidebar-nav">
+        <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
+        <a href="{% url 'manage_templates' %}" class="nav-item">Manage Templates</a>
+        <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
+        <a href="#" class="nav-item">Domain Mapping</a>
+        <a href="#" class="nav-item">Upload History</a>
     </div>
+
+    <a href="{% url 'logout' %}" class="nav-item" style="color:#e74c3c;">Logout</a>
+</nav>
+
+<div class="main-content">
+    <div class="top-bar">
+        <h1>{% block title %}{% endblock %}</h1>
+        <div>Welcome, <strong>{{ user.username }}</strong></div>
+    </div>
+
+    {% block content %}
+    {% endblock %}
+</div>
 
 </body>
 </html>
