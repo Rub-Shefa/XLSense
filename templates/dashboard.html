@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h3 style="color: #7f8c8d; font-size: 0.9rem;">Total Domains</h3>
+        <p style="font-size: 1.8rem; margin: 10px 0;">4</p>
+    </div>
+    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h3 style="color: #7f8c8d; font-size: 0.9rem;">Files Processed</h3>
+        <p style="font-size: 1.8rem; margin: 10px 0;">0</p>
+    </div>
+    <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h3 style="color: #7f8c8d; font-size: 0.9rem;">Validation Rules</h3>
+        <p style="font-size: 1.8rem; margin: 10px 0;">22</p>
+    </div>
+</div>
+
+<h2 style="margin-top: 40px;">Recent Activity (Audit Log)</h2>
+<table style="width: 100%; border-collapse: collapse; background: white; margin-top: 10px;">
+    <thead>
+        <tr style="text-align: left; background: #f8f9fa;">
+            <th style="padding: 12px; border-bottom: 1px solid #ddd;">Action</th>
+            <th style="padding: 12px; border-bottom: 1px solid #ddd;">Details</th>
+            <th style="padding: 12px; border-bottom: 1px solid #ddd;">Timestamp</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="padding: 12px; border-bottom: 1px solid #eee;">System Initialization</td>
+            <td style="padding: 12px; border-bottom: 1px solid #eee;">Database seeded with 22 rules</td>
+            <td style="padding: 12px; border-bottom: 1px solid #eee;">Just now</td>
+        </tr>
+    </tbody>
+</table>
+{% endblock %}
