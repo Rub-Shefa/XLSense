@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}
+Upload File
+{% endblock %}
+
+{% block content %}
+
+<style>
+.upload-container {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    max-width: 600px;
+}
+
+.upload-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.upload-btn:hover {
+    background-color: #2980b9;
+}
+
+.file-input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.domain-select {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.status-processing {
+    color: #e67e22;
+    font-weight: bold;
+}
+
+.status-completed {
+    color: #27ae60;
+    font-weight: bold;
+}
+</style>
+
+<div class="upload-container">
+
+<h2>Upload Excel or CSV File</h2>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="
+            padding:10px;
+            margin-bottom:15px;
+            border-radius:5px;
+            {% if message.tags == 'error' %}
+                background-color:#f8d7da;
+                color:#721c24;
+            {% elif message.tags == 'success' %}
+                background-color:#d4edda;
+                color:#155724;
+            {% endif %}
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" id="uploadForm">
+    {% csrf_token %}
+
+    <label>Select Domain Template:</label>
+    <select name="template_id" class="domain-select" required>
+        {% for template in templates %}
+            <option value="{{ template.id }}">{{ template.template_name }}</option>
+        {% endfor %}
+    </select>
+
+    <label>Select File:</label>
+    <input type="file" name="file" class="file-input" required>
+
+    <button type="submit" id="uploadBtn" class="upload-btn">Upload File</button>
+    <span id="uploadStatus" style="margin-left:10px; color:#3498db;"></span>
+</form>
+
+<hr>
+
+<h3>Your Uploaded Files</h3>
+
+<table border="1" cellpadding="8" width="100%" style="border-collapse: collapse;">
+    <tr style="background:#f4f7f6;">
+        <th>File Name</th>
+        <th>Status</th>
+        <th>Uploaded</th>
+        <th>Processed</th>
+    </tr>
+
+    {% for file in user_files %}
+    <tr>
+        <td>{{ file.file.name }}</td>
+        <td>
+            {% if file.status == "Processing" %}
+                <span class="status-processing">Processing...</span>
+            {% elif file.status == "Completed" %}
+                <span class="status-completed">Completed</span>
+            {% else %}
+                {{ file.status }}
+            {% endif %}
+        </td>
+        <td>{{ file.upload_time }}</td>
+        <td>{{ file.processed_time }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="4">No files uploaded yet.</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</div>
+
+<script>
+    const form = document.getElementById("uploadForm");
+    const btn = document.getElementById("uploadBtn");
+    const statusText = document.getElementById("uploadStatus");
+
+    form.addEventListener("submit", function() {
+        btn.disabled = true;
+        statusText.innerText = "Uploading...";
+    });
+
+    {% if processing_exists %}
+        setTimeout(function() {
+            location.reload();
+        }, 4000);
+    {% endif %}
+</script>
+
+{% endblock %}
