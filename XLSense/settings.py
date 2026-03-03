@@ -79,7 +79,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'xlsense_db',
         'USER': 'root',
-        'PASSWORD': '',  # Keep empty for XAMPP default
+        'PASSWORD': 'admin123',  # Keep empty for XAMPP default
         'HOST': '127.0.0.1',
         'PORT': '3306',
     }

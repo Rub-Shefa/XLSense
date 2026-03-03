@@ -101,8 +101,10 @@
                 {% if user.is_staff or user.is_superuser %}
                     <a href="{% url 'admin_dashboard' %}" class="nav-item">Dashboard</a>
                     <a href="{% url 'manage_templates' %}" class="nav-item">Manage Templates</a>
+                    <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
                 {% else %}
                     <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
+                    <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
                 {% endif %}
                 <a href="#" class="nav-item">Domain Mapping</a>
                 <a href="#" class="nav-item">Upload History</a>
