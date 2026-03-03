@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-
 {% block content %}
 
-<h2>Upload File</h2>
+<h2>Upload Excel or CSV File</h2>
 
-<h3>Upload Excel or CSV File</h3>
 {% if messages %}
     {% for message in messages %}
         <div style="
-            padding: 10px;
-            margin-bottom: 15px;
-            border-radius: 6px;
-            background-color: #f8d7da;
-            color: #721c24;
+            padding:10px;
+            margin-bottom:15px;
+            border-radius:5px;
+            background-color:
+            {% if message.tags == 'error' %}#f8d7da{% else %}#d4edda{% endif %};
+            color:
+            {% if message.tags == 'error' %}#721c24{% else %}#155724{% endif %};
         ">
             {{ message }}
         </div>
@@ -22,107 +22,137 @@
 <form method="POST" enctype="multipart/form-data" id="uploadForm">
     {% csrf_token %}
 
-    <label>Select Domain Template:</label><br>
-    <select name="template" required style="padding:8px; width:300px;">
-        <option value="">-- Select Domain --</option>
-        {% for template in templates %}
-            <option value="{{ template.id }}">
-                {{ template.template_name }}
-            </option>
-        {% endfor %}
-    </select>
+    <label><strong>Select File(s):</strong></label><br><br>
+
+    <input type="file" id="fileInput" name="file" multiple style="display:none;">
+
+    <button type="button" id="chooseBtn" style="
+        padding:10px 18px;
+        background-color:#6c757d;
+        color:white;
+        border:none;
+        border-radius:6px;
+        cursor:pointer;
+    ">
+        Choose File(s)
+    </button>
+
+    <span id="fileName" style="margin-left:15px; font-weight:bold;"></span>
 
     <br><br>
 
-    <label>Select File:</label><br>
-    <input type="file" name="file" required style="padding:8px;">
-
-    <br><br>
-
-    <button type="submit" id="uploadBtn" style="
-        background-color: #3498db;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 6px;
-        font-size: 16px;
-        cursor: pointer;
+    <button type="submit" id="uploadBtn" disabled style="
+        padding:10px 20px;
+        background-color:#9bbcd1;
+        color:white;
+        border:none;
+        border-radius:6px;
+        cursor:not-allowed;
+        transition:0.3s;
     ">
         Upload File
     </button>
+
 </form>
 
-<hr style="margin: 30px 0;">
-
-{% if latest_file %}
+<!-- Processing Area -->
+<div id="processingBox" style="display:none; margin-top:20px;">
+    <strong id="statusText">Uploading...</strong>
     <div style="
-        padding: 15px;
-        border-radius: 8px;
-        background-color: #f4f4f4;
-        max-width: 500px;
+        width:50%;
+        background-color:#e9ecef;
+        border-radius:8px;
+        margin-top:10px;
     ">
-        <h4>Latest Upload</h4>
-
-        <strong>File:</strong> {{ latest_file.file.name }} <br><br>
-
-        <strong>Status:</strong>
-
-        {% if latest_file.status == "Completed" %}
-            <span style="color: green; font-weight: bold;">
-                Completed ✓
-            </span>
-
-        {% elif latest_file.status == "Processing" %}
-            <span style="color: orange; font-weight: bold;">
-                Processing...
-            </span>
-
-            <!-- Progress Bar -->
-            <div style="
-                margin-top:10px;
-                width:100%;
-                background:#ddd;
-                border-radius:5px;
-                overflow:hidden;
-            ">
-                <div id="progressBar" style="
-                    width:0%;
-                    height:15px;
-                    background:#f39c12;
-                    animation: progressAnim 3s linear forwards;
-                "></div>
-            </div>
-
-        {% else %}
-            <span style="color: red; font-weight: bold;">
-                Failed
-            </span>
-        {% endif %}
+        <div id="progressBar" style="
+            width:0%;
+            height:20px;
+            background-color:#007bff;
+            border-radius:8px;
+            transition: width 0.3s;
+        "></div>
     </div>
+</div>
+
+<hr>
+
+{% if latest_upload %}
+<div style="
+    margin-top:20px;
+    padding:15px;
+    background-color:#f8f9fa;
+    border-radius:8px;
+    width:50%;
+">
+    <h4>Latest Upload</h4>
+    <p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
+    <p>
+        <strong>Status:</strong>
+        {% if latest_upload.status == "Completed" %}
+            <span style="color:green;">Completed ✓</span>
+        {% elif latest_upload.status == "Processing" %}
+            <span style="color:orange;">Processing...</span>
+        {% else %}
+            <span style="color:red;">Failed</span>
+        {% endif %}
+    </p>
+</div>
 {% endif %}
 
-<!-- Progress Animation -->
-<style>
-@keyframes progressAnim {
-    from { width: 0%; }
-    to { width: 100%; }
-}
-</style>
-
-<!-- Auto Refresh When Processing -->
-{% if latest_file and latest_file.status == "Processing" %}
 <script>
-    setTimeout(function(){
-        window.location.reload();
-    }, 3500);
-</script>
-{% endif %}
+    const fileInput = document.getElementById("fileInput");
+    const chooseBtn = document.getElementById("chooseBtn");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const fileNameDisplay = document.getElementById("fileName");
+    const form = document.getElementById("uploadForm");
+    const processingBox = document.getElementById("processingBox");
+    const progressBar = document.getElementById("progressBar");
+    const statusText = document.getElementById("statusText");
 
-<!-- Show Uploading Immediately After Submit -->
-<script>
-document.getElementById("uploadForm").addEventListener("submit", function(){
-    document.getElementById("uploadBtn").innerText = "Uploading...";
-});
+    chooseBtn.addEventListener("click", function() {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener("change", function() {
+
+        if (fileInput.files.length > 0) {
+
+            let names = [];
+            for (let i = 0; i < fileInput.files.length; i++) {
+                names.push(fileInput.files[i].name);
+            }
+
+            fileNameDisplay.textContent = names.join(", ");
+
+            uploadBtn.disabled = false;
+            uploadBtn.style.backgroundColor = "#007bff";
+            uploadBtn.style.cursor = "pointer";
+        }
+    });
+
+    form.addEventListener("submit", function() {
+
+        processingBox.style.display = "block";
+        uploadBtn.disabled = true;
+        uploadBtn.style.backgroundColor = "#6c757d";
+
+        let progress = 0;
+
+        let interval = setInterval(function() {
+            progress += 10;
+            progressBar.style.width = progress + "%";
+
+            if (progress >= 40) {
+                statusText.innerText = "Processing...";
+            }
+
+            if (progress >= 100) {
+                clearInterval(interval);
+                statusText.innerText = "Completed ✓";
+            }
+
+        }, 300);
+    });
 </script>
 
 {% endblock %}
