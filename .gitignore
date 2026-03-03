@@ -1,6 +1,12 @@
+.env
 venv/
 __pycache__/
+*.py[codz]
 *.pyc
-db.sqlite3
+
+
+docs/
 uploads/
-.env
+
+database/
+db.sqlite3
