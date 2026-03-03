@@ -1,153 +1,128 @@
 {% extends "base.html" %}
 
-{% block title %}
-Upload File
-{% endblock %}
-
 {% block content %}
 
-<style>
-.upload-container {
-    background: white;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    max-width: 600px;
-}
+<h2>Upload File</h2>
 
-.upload-btn {
-    background-color: #3498db;
-    color: white;
-    border: none;
-    padding: 12px 20px;
-    font-size: 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: 0.3s;
-}
-
-.upload-btn:hover {
-    background-color: #2980b9;
-}
-
-.file-input {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    width: 100%;
-    margin-bottom: 15px;
-}
-
-.domain-select {
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    width: 100%;
-    margin-bottom: 15px;
-}
-
-.status-processing {
-    color: #e67e22;
-    font-weight: bold;
-}
-
-.status-completed {
-    color: #27ae60;
-    font-weight: bold;
-}
-</style>
-
-<div class="upload-container">
-
-<h2>Upload Excel or CSV File</h2>
-
+<h3>Upload Excel or CSV File</h3>
 {% if messages %}
     {% for message in messages %}
         <div style="
-            padding:10px;
-            margin-bottom:15px;
-            border-radius:5px;
-            {% if message.tags == 'error' %}
-                background-color:#f8d7da;
-                color:#721c24;
-            {% elif message.tags == 'success' %}
-                background-color:#d4edda;
-                color:#155724;
-            {% endif %}
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            background-color: #f8d7da;
+            color: #721c24;
         ">
             {{ message }}
         </div>
     {% endfor %}
 {% endif %}
 
-<form method="post" enctype="multipart/form-data" id="uploadForm">
+<form method="POST" enctype="multipart/form-data" id="uploadForm">
     {% csrf_token %}
 
-    <label>Select Domain Template:</label>
-    <select name="template_id" class="domain-select" required>
+    <label>Select Domain Template:</label><br>
+    <select name="template" required style="padding:8px; width:300px;">
+        <option value="">-- Select Domain --</option>
         {% for template in templates %}
-            <option value="{{ template.id }}">{{ template.template_name }}</option>
+            <option value="{{ template.id }}">
+                {{ template.template_name }}
+            </option>
         {% endfor %}
     </select>
 
-    <label>Select File:</label>
-    <input type="file" name="file" class="file-input" required>
+    <br><br>
 
-    <button type="submit" id="uploadBtn" class="upload-btn">Upload File</button>
-    <span id="uploadStatus" style="margin-left:10px; color:#3498db;"></span>
+    <label>Select File:</label><br>
+    <input type="file" name="file" required style="padding:8px;">
+
+    <br><br>
+
+    <button type="submit" id="uploadBtn" style="
+        background-color: #3498db;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+    ">
+        Upload File
+    </button>
 </form>
 
-<hr>
+<hr style="margin: 30px 0;">
 
-<h3>Your Uploaded Files</h3>
+{% if latest_file %}
+    <div style="
+        padding: 15px;
+        border-radius: 8px;
+        background-color: #f4f4f4;
+        max-width: 500px;
+    ">
+        <h4>Latest Upload</h4>
 
-<table border="1" cellpadding="8" width="100%" style="border-collapse: collapse;">
-    <tr style="background:#f4f7f6;">
-        <th>File Name</th>
-        <th>Status</th>
-        <th>Uploaded</th>
-        <th>Processed</th>
-    </tr>
+        <strong>File:</strong> {{ latest_file.file.name }} <br><br>
 
-    {% for file in user_files %}
-    <tr>
-        <td>{{ file.file.name }}</td>
-        <td>
-            {% if file.status == "Processing" %}
-                <span class="status-processing">Processing...</span>
-            {% elif file.status == "Completed" %}
-                <span class="status-completed">Completed</span>
-            {% else %}
-                {{ file.status }}
-            {% endif %}
-        </td>
-        <td>{{ file.upload_time }}</td>
-        <td>{{ file.processed_time }}</td>
-    </tr>
-    {% empty %}
-    <tr>
-        <td colspan="4">No files uploaded yet.</td>
-    </tr>
-    {% endfor %}
-</table>
+        <strong>Status:</strong>
 
-</div>
+        {% if latest_file.status == "Completed" %}
+            <span style="color: green; font-weight: bold;">
+                Completed ✓
+            </span>
 
+        {% elif latest_file.status == "Processing" %}
+            <span style="color: orange; font-weight: bold;">
+                Processing...
+            </span>
+
+            <!-- Progress Bar -->
+            <div style="
+                margin-top:10px;
+                width:100%;
+                background:#ddd;
+                border-radius:5px;
+                overflow:hidden;
+            ">
+                <div id="progressBar" style="
+                    width:0%;
+                    height:15px;
+                    background:#f39c12;
+                    animation: progressAnim 3s linear forwards;
+                "></div>
+            </div>
+
+        {% else %}
+            <span style="color: red; font-weight: bold;">
+                Failed
+            </span>
+        {% endif %}
+    </div>
+{% endif %}
+
+<!-- Progress Animation -->
+<style>
+@keyframes progressAnim {
+    from { width: 0%; }
+    to { width: 100%; }
+}
+</style>
+
+<!-- Auto Refresh When Processing -->
+{% if latest_file and latest_file.status == "Processing" %}
 <script>
-    const form = document.getElementById("uploadForm");
-    const btn = document.getElementById("uploadBtn");
-    const statusText = document.getElementById("uploadStatus");
+    setTimeout(function(){
+        window.location.reload();
+    }, 3500);
+</script>
+{% endif %}
 
-    form.addEventListener("submit", function() {
-        btn.disabled = true;
-        statusText.innerText = "Uploading...";
-    });
-
-    {% if processing_exists %}
-        setTimeout(function() {
-            location.reload();
-        }, 4000);
-    {% endif %}
+<!-- Show Uploading Immediately After Submit -->
+<script>
+document.getElementById("uploadForm").addEventListener("submit", function(){
+    document.getElementById("uploadBtn").innerText = "Uploading...";
+});
 </script>
 
 {% endblock %}
