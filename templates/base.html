@@ -20,7 +20,6 @@
             background-color: #f4f7f6;
         }
 
-        /* Sidebar Styling */
         .sidebar {
             width: var(--sidebar-width);
             background-color: var(--primary-color);
@@ -56,7 +55,6 @@
             border-left: 4px solid var(--accent-color);
         }
 
-        /* Main Content Area */
         .main-content {
             flex: 1;
             padding: 30px;
@@ -71,6 +69,36 @@
             padding-bottom: 10px;
             border-bottom: 1px solid #ddd;
         }
+
+        .messages {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 20px;
+        }
+
+        .messages li {
+            padding: 12px 20px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+
+        .messages .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .messages .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .messages .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
     </style>
 </head>
 <body>
@@ -78,19 +106,43 @@
     <nav class="sidebar">
         <h2>XLSense</h2>
         <div class="sidebar-nav">
-            <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
-<a href="{% url 'manage_templates' %}" class="nav-item">Manage Templates</a>
-            <a href="#" class="nav-item">Domain Mapping</a>
-            <a href="#" class="nav-item">Upload History</a>
+            {% if user.is_authenticated %}
+                {% if user.is_staff or user.is_superuser %}
+                    <a href="{% url 'admin_dashboard' %}" class="nav-item">Dashboard</a>
+                    <a href="{% url 'manage_templates' %}" class="nav-item">Manage Templates</a>
+                {% else %}
+                    <a href="{% url 'user_dashboard' %}" class="nav-item">Dashboard</a>
+                {% endif %}
+                <a href="#" class="nav-item">Domain Mapping</a>
+                <a href="#" class="nav-item">Upload History</a>
+            {% else %}
+                <a href="{% url 'login' %}" class="nav-item">Login</a>
+                <a href="{% url 'register' %}" class="nav-item">Register</a>
+            {% endif %}
         </div>
-        <a href="#" class="nav-item" style="margin-top: auto; border: none; color: #e74c3c;">Logout</a>
+        {% if user.is_authenticated %}
+            <form method="post" action="{% url 'logout' %}" style="margin-top: auto;">
+                {% csrf_token %}
+                <button type="submit" class="nav-item" style="margin-top: auto; border: none; color: #e74c3c; background: none; cursor: pointer;">Logout</button>
+            </form>
+        {% endif %}
     </nav>
 
     <div class="main-content">
         <div class="top-bar">
             <h1>{% block title %}Overview{% endblock %}</h1>
-            <div>Welcome, <strong>{{ user.username }}</strong></div>
+            {% if user.is_authenticated %}
+                <div>Welcome, <strong>{{ user.username }}</strong></div>
+            {% endif %}
         </div>
+
+        {% if messages %}
+            <ul class="messages">
+                {% for message in messages %}
+                    <li class="{{ message.tags }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
         
         {% block content %}
         {% endblock %}
