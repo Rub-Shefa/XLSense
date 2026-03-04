@@ -11,6 +11,7 @@ urlpatterns = [
     # Dashboards
     path("dashboard/", views.dashboard_view, name="dashboard"),
     path("admin/", views.admin_dashboard_view, name="admin_dashboard"),
+    path("system-stats/", views.admin_dashboard_view, name="admin_dashboard"),
     # Features
     path("manage-templates/", views.manage_templates_view, name="manage_templates"),
     path("upload/", views.upload_file_view, name="upload_file"),

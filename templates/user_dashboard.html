@@ -18,6 +18,19 @@
     </div>
 </div>
 
+{% if user.is_staff %}
+    <div style="background: #fdf2f2; border: 1px solid #feb2b2; padding: 15px; border-radius: 8px; margin-bottom: 30px; display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <strong style="color: #9b2c2c;">Admin Control Panel</strong>
+            <p style="margin: 0; font-size: 0.85rem; color: #c53030;">You are logged in as an Administrator. You can access system-wide stats and the raw database below.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'admin_dashboard' %}" target="_blank" style="background: #2c3e50; color: white; padding: 8px 15px; border-radius: 5px; text-decoration: none; font-size: 0.85rem; font-weight: 600;">📊 System Stats</a>
+            <a href="/admin/" style="background: #e74c3c; color: white; padding: 8px 15px; border-radius: 5px; text-decoration: none; font-size: 0.85rem; font-weight: 600;" target="_blank">⚙️ DB Admin</a>
+        </div>
+    </div>
+{% endif %}
+
 <div style="margin-top: 40px;">
     <h2>Upload New File</h2>
     <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 10px;">

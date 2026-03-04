@@ -16,8 +16,8 @@ def is_admin(user):
 
 
 def redirectBasedOnRole(user):
-    if user.is_staff or user.is_superuser:
-        return redirect("admin_dashboard")
+    #if user.is_staff or user.is_superuser:
+     #   return redirect("admin_dashboard")
     return redirect("dashboard")
 
 
@@ -86,8 +86,8 @@ def logout_view(request):
 # =========================
 @login_required
 def dashboard_view(request):
-    if is_admin(request.user):
-        return redirect("admin_dashboard")
+   # if is_admin(request.user):
+    #    return redirect("admin_dashboard")
 
     if request.method == "POST":
         domain = request.POST.get("domain")
@@ -118,7 +118,11 @@ def dashboard_view(request):
             )
             return redirect("dashboard")
 
-    files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+    if is_admin(request.user):
+        files = UploadedFile.objects.all().order_by("-upload_time")
+    else:
+        files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+
     processed_count = files.filter(status="Completed").count()
     pending_count = files.filter(status="Pending").count()
 
@@ -126,9 +130,9 @@ def dashboard_view(request):
         "files": files,
         "processed_count": processed_count,
         "pending_count": pending_count,
+        "is_admin": is_admin(request.user), # This tells the HTML to show the Boss Button
     }
     return render(request, "user_dashboard.html", context)
-
 
 @login_required
 def admin_dashboard_view(request):
@@ -138,11 +142,15 @@ def admin_dashboard_view(request):
     logs = AuditLog.objects.all().order_by("-action_timestamp")[:5]
     domain_count = DomainTemplate.objects.count()
     rule_count = ValidationRule.objects.count()
+    files_processed = UploadedFile.objects.filter(status="Completed").count()
+    user_count = User.objects.count()
 
     context = {
         "logs": logs,
         "domain_count": domain_count,
         "rule_count": rule_count,
+        "files_processed": files_processed, 
+        "user_count": user_count,
     }
 
     return render(request, "dashboard.html", context)
@@ -156,26 +164,28 @@ def manage_templates_view(request):
     selected_template_id = request.GET.get("template_id")
     templates = DomainTemplate.objects.all()
 
-    validation_rules = []
-    formula_rules = []
+    # If no template is selected, default to the first one available
+    if not selected_template_id and templates.exists():
+        selected_template_id = str(templates.first().id)
 
+    # Filter rules based on the selected template
     if selected_template_id:
-        validation_rules = ValidationRule.objects.filter(
-            template_id=selected_template_id
-        )
+        validation_rules = ValidationRule.objects.filter(template_id=selected_template_id)
         formula_rules = FormulaRule.objects.filter(template_id=selected_template_id)
     else:
-        validation_rules = ValidationRule.objects.all()
-        formula_rules = FormulaRule.objects.all()
+        # Fallback in case there are zero templates in the DB
+        validation_rules = []
+        formula_rules = []
 
     return render(
         request,
-        "manage_templates.html",
+        "manage_templates.html", # Keeping the same filename as requested
         {
             "templates": templates,
             "validation_rules": validation_rules,
             "formula_rules": formula_rules,
             "selected_id": selected_template_id,
+            "page_title": "Domain Templates", # For the professional header
         },
     )
 
