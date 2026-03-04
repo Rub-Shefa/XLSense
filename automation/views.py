@@ -1,5 +1,6 @@
 import os
-import time
+import time 
+from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
@@ -112,7 +113,7 @@ def dashboard_view(request):
 @login_required
 def admin_dashboard_view(request):
 
-    logs = AuditLog.objects.all().order_by("-action_timestamp")[:5]
+    logs = AuditLog.objects.select_related('user').all().order_by("-action_timestamp")[:10]
 
     domain_count = DomainTemplate.objects.count()
     rule_count = ValidationRule.objects.count()
@@ -169,7 +170,6 @@ def manage_templates_view(request):
 
 @login_required
 def upload_file_view(request):
-
     domains = DomainTemplate.objects.all()
 
     latest_upload = UploadedFile.objects.filter(
@@ -177,7 +177,6 @@ def upload_file_view(request):
     ).order_by("-upload_time").first()
 
     if request.method == "POST":
-
         selected_domain = request.POST.get("domain")
         files = request.FILES.getlist("file")
 
@@ -196,7 +195,6 @@ def upload_file_view(request):
             return redirect("upload_file")
 
         for file in files:
-
             if not file.name.endswith((".xlsx", ".csv")):
                 messages.error(request, f"{file.name} is not supported.")
                 continue
@@ -209,21 +207,35 @@ def upload_file_view(request):
             )
 
             try:
-
-                # simulate processing
                 time.sleep(2)
 
                 uploaded_file.status = "Completed"
+                uploaded_file.processed_time = timezone.now() 
                 uploaded_file.save()
 
-            except Exception:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action_type="File Upload",
+                    details=f"Successfully uploaded: {file.name} | Domain: {selected_domain}"
+                )
 
+            except Exception as e:
                 uploaded_file.status = "Failed"
                 uploaded_file.save()
 
+                AuditLog.objects.create(
+                    user=request.user,
+                    action_type="Upload Error",
+                    details=f"Failed to process {file.name}: {str(e)}"
+                )
                 messages.error(request, f"{file.name} failed to process.")
 
         messages.success(request, "File(s) processed successfully.")
+        
+       
+        if request.user.is_staff or is_admin(request.user): 
+             return redirect("admin_dashboard")
+        
         return redirect("upload_file")
 
     return render(
@@ -234,3 +246,18 @@ def upload_file_view(request):
             "domains": domains,
         },
     )
+
+# =========================
+# Upload History
+# =========================
+
+@login_required
+def upload_history_view(request):
+    if request.user.is_staff:
+        # Admin sees everything
+        files = UploadedFile.objects.all().order_by("-upload_time")
+    else:
+        # Regular users only see what they uploaded
+        files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+    
+    return render(request, "upload_history.html", {"files": files})

@@ -73,32 +73,41 @@
     </div>
 
     <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr style="text-align: left; background: #f8f9fa; color: #7f8c8d; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px;">
-                <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Action Type</th>
-                <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Event Details</th>
-                <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Timeline</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for log in logs %}
-            <tr style="border-bottom: 1px solid #eee; transition: background 0.2s;">
-                <td style="padding: 15px;">
-                    <span style="background: #e8f4fd; color: #3498db; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;">
-                        {{ log.action_type }}
-                    </span>
-                </td>
-                <td style="padding: 15px; color: #2c3e50; font-size: 0.9rem;">{{ log.details }}</td>
-                <td style="padding: 15px; color: #95a5a6; font-size: 0.85rem;">{{ log.action_timestamp|timesince }} ago</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="3" style="padding: 40px; text-align: center; color: #bdc3c7;">
-                    <p>No activity recorded in the logs yet.</p>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <thead>
+        <tr style="text-align: left; background: #f8f9fa; color: #7f8c8d; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px;">
+            <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">User</th>
+            <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Action Type</th>
+            <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Event Details</th>
+            <th style="padding: 15px; border-bottom: 2px solid #edf2f7;">Timeline</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 15px; color: #2c3e50; font-weight: 600; font-size: 0.9rem;">
+                {{ log.user.username }}
+            </td>
+
+            <td style="padding: 15px;">
+                <span style="background: #e8f4fd; color: #3498db; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;">
+                    {{ log.action_type }}
+                </span>
+            </td>
+            
+            <td style="padding: 15px; color: #2c3e50; font-size: 0.9rem;">{{ log.details }}</td>
+            
+            <td style="padding: 15px; color: #95a5a6; font-size: 0.85rem;">
+                {{ log.action_timestamp|timesince }} ago
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="4" style="padding: 40px; text-align: center; color: #bdc3c7;">
+                No activity recorded yet.
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 </div>
 {% endblock %}

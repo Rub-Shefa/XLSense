@@ -15,4 +15,6 @@ urlpatterns = [
     # Features
     path("manage-templates/", views.manage_templates_view, name="manage_templates"),
     path("upload/", views.upload_file_view, name="upload_file"),
+    # History
+    path("history/", views.upload_history_view, name="upload_history"),
 ]

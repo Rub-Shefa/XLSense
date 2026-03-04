@@ -108,7 +108,7 @@
                     <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
                 {% endif %}
                 <a href="#" class="nav-item">Domain Mapping</a>
-                <a href="#" class="nav-item">Upload History</a>
+                <a href="{% url 'upload_history' %}" class="nav-item">Upload History</a>
             {% else %}
                 <a href="{% url 'login' %}" class="nav-item">Login</a>
                 <a href="{% url 'register' %}" class="nav-item">Register</a>
