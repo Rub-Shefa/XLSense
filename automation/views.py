@@ -2,7 +2,7 @@ import os
 import time
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, authenticate, logout
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.models import User
@@ -16,34 +16,36 @@ def is_admin(user):
 
 
 def redirectBasedOnRole(user):
-    #if user.is_staff or user.is_superuser:
-     #   return redirect("admin_dashboard")
     return redirect("dashboard")
 
 
 # =========================
 # Authentication Views
 # =========================
+
 def login_view(request):
+
     if request.user.is_authenticated:
         return redirectBasedOnRole(request.user)
 
     if request.method == "POST":
+
         form = AuthenticationForm(request, data=request.POST)
+
         if form.is_valid():
+
             username = form.cleaned_data.get("username")
             password = form.cleaned_data.get("password")
+
             user = authenticate(username=username, password=password)
+
             if user is not None:
                 login(request, user)
                 messages.success(request, f"Welcome back, {username}!")
                 return redirectBasedOnRole(user)
-            else:
-                messages.error(request, "Invalid username or password.")
-        else:
-            for field, errors in form.errors.items():
-                for error in errors:
-                    messages.error(request, error)
+
+        messages.error(request, "Invalid username or password.")
+
     else:
         form = AuthenticationForm()
 
@@ -51,22 +53,26 @@ def login_view(request):
 
 
 def register_view(request):
+
     if request.user.is_authenticated:
         return redirectBasedOnRole(request.user)
 
     if request.method == "POST":
+
         form = CustomUserCreationForm(request.POST)
+
         if form.is_valid():
+
             user = form.save()
             username = form.cleaned_data.get("username")
+
             messages.success(
-                request, f"Account created for {username}! You can now login."
+                request,
+                f"Account created for {username}! You can now login."
             )
+
             return redirect("login")
-        else:
-            for field, errors in form.errors.items():
-                for error in errors:
-                    messages.error(request, f"{error}")
+
     else:
         form = CustomUserCreationForm()
 
@@ -74,49 +80,16 @@ def register_view(request):
 
 
 def logout_view(request):
-    if request.method == "POST":
-        logout(request)
-        messages.info(request, "You have successfully logged out.")
-        return redirect("login")
+    logout(request)
     return redirect("login")
 
 
 # =========================
-# Dashboard Views
+# Dashboard
 # =========================
+
 @login_required
 def dashboard_view(request):
-   # if is_admin(request.user):
-    #    return redirect("admin_dashboard")
-
-    if request.method == "POST":
-        domain = request.POST.get("domain")
-        uploaded_file = request.FILES.get("file")
-
-        if not uploaded_file or not domain:
-            messages.error(request, "Please select a domain and upload a file.")
-        else:
-            template = DomainTemplate.objects.filter(domain_type=domain).first()
-            if not template:
-                template = DomainTemplate.objects.first()
-
-            file_record = UploadedFile.objects.create(
-                user=request.user,
-                template=template,
-                file=uploaded_file,
-                status="Pending",
-            )
-
-            AuditLog.objects.create(
-                user=request.user,
-                action_type="File Upload",
-                details=f"Uploaded file: {uploaded_file.name} for domain: {domain}",
-            )
-
-            messages.success(
-                request, "File uploaded successfully! Processing will begin shortly."
-            )
-            return redirect("dashboard")
 
     if is_admin(request.user):
         files = UploadedFile.objects.all().order_by("-upload_time")
@@ -130,16 +103,17 @@ def dashboard_view(request):
         "files": files,
         "processed_count": processed_count,
         "pending_count": pending_count,
-        "is_admin": is_admin(request.user), # This tells the HTML to show the Boss Button
+        "is_admin": is_admin(request.user),
     }
+
     return render(request, "user_dashboard.html", context)
+
 
 @login_required
 def admin_dashboard_view(request):
-    if not is_admin(request.user):
-        return redirect("dashboard")
 
     logs = AuditLog.objects.all().order_by("-action_timestamp")[:5]
+
     domain_count = DomainTemplate.objects.count()
     rule_count = ValidationRule.objects.count()
     files_processed = UploadedFile.objects.filter(status="Completed").count()
@@ -149,7 +123,7 @@ def admin_dashboard_view(request):
         "logs": logs,
         "domain_count": domain_count,
         "rule_count": rule_count,
-        "files_processed": files_processed, 
+        "files_processed": files_processed,
         "user_count": user_count,
     }
 
@@ -157,73 +131,106 @@ def admin_dashboard_view(request):
 
 
 # =========================
-# Manage Templates View
+# Manage Templates
 # =========================
+
 @login_required
 def manage_templates_view(request):
+
     selected_template_id = request.GET.get("template_id")
     templates = DomainTemplate.objects.all()
 
-    # If no template is selected, default to the first one available
     if not selected_template_id and templates.exists():
         selected_template_id = str(templates.first().id)
 
-    # Filter rules based on the selected template
     if selected_template_id:
         validation_rules = ValidationRule.objects.filter(template_id=selected_template_id)
         formula_rules = FormulaRule.objects.filter(template_id=selected_template_id)
     else:
-        # Fallback in case there are zero templates in the DB
         validation_rules = []
         formula_rules = []
 
     return render(
         request,
-        "manage_templates.html", # Keeping the same filename as requested
+        "manage_templates.html",
         {
             "templates": templates,
             "validation_rules": validation_rules,
             "formula_rules": formula_rules,
             "selected_id": selected_template_id,
-            "page_title": "Domain Templates", # For the professional header
+            "page_title": "Domain Templates",
         },
     )
 
 
 # =========================
-# Upload File View
+# Upload File
 # =========================
+
 @login_required
 def upload_file_view(request):
-    latest_upload = UploadedFile.objects.order_by("-upload_time").first()
+
+    domains = DomainTemplate.objects.all()
+
+    latest_upload = UploadedFile.objects.filter(
+        user=request.user
+    ).order_by("-upload_time").first()
 
     if request.method == "POST":
+
+        selected_domain = request.POST.get("domain")
         files = request.FILES.getlist("file")
+
+        if not selected_domain:
+            messages.error(request, "Please select a domain.")
+            return redirect("upload_file")
 
         if not files:
             messages.error(request, "Please select at least one file.")
             return redirect("upload_file")
 
+        template = DomainTemplate.objects.filter(domain_type=selected_domain).first()
+
+        if not template:
+            messages.error(request, "Selected domain template not found.")
+            return redirect("upload_file")
+
         for file in files:
+
             if not file.name.endswith((".xlsx", ".csv")):
-                messages.error(
-                    request,
-                    f"{file.name} is not supported. Only CSV and XLSX files allowed.",
-                )
+                messages.error(request, f"{file.name} is not supported.")
                 continue
 
             uploaded_file = UploadedFile.objects.create(
-                user=request.user, file=file, status="Processing"
+                user=request.user,
+                template=template,
+                file=file,
+                status="Processing"
             )
 
-            time.sleep(2)
+            try:
 
-            uploaded_file.status = "Completed"
-            uploaded_file.save()
+                # simulate processing
+                time.sleep(2)
+
+                uploaded_file.status = "Completed"
+                uploaded_file.save()
+
+            except Exception:
+
+                uploaded_file.status = "Failed"
+                uploaded_file.save()
+
+                messages.error(request, f"{file.name} failed to process.")
 
         messages.success(request, "File(s) processed successfully.")
         return redirect("upload_file")
 
-    context = {"latest_upload": latest_upload}
-
-    return render(request, "upload.html", context)
+    return render(
+        request,
+        "upload.html",
+        {
+            "latest_upload": latest_upload,
+            "domains": domains,
+        },
+    )

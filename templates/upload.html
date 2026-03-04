@@ -20,139 +20,242 @@
 {% endif %}
 
 <form method="POST" enctype="multipart/form-data" id="uploadForm">
-    {% csrf_token %}
+{% csrf_token %}
 
-    <label><strong>Select File(s):</strong></label><br><br>
+<!-- DOMAIN SELECTION -->
 
-    <input type="file" id="fileInput" name="file" multiple style="display:none;">
+<label><strong>Select Domain:</strong></label><br><br>
 
-    <button type="button" id="chooseBtn" style="
-        padding:10px 18px;
-        background-color:#6c757d;
-        color:white;
-        border:none;
-        border-radius:6px;
-        cursor:pointer;
-    ">
-        Choose File(s)
-    </button>
+<select name="domain" id="domainSelect" style="
+padding:8px;
+border-radius:6px;
+border:1px solid #ccc;
+width:250px;
+">
 
-    <span id="fileName" style="margin-left:15px; font-weight:bold;"></span>
+<option value="">-- Select Domain --</option>
 
-    <br><br>
+{% for d in domains %}
+<option value="{{ d.domain_type }}">{{ d.domain_type }}</option>
+{% endfor %}
 
-    <button type="submit" id="uploadBtn" disabled style="
-        padding:10px 20px;
-        background-color:#9bbcd1;
-        color:white;
-        border:none;
-        border-radius:6px;
-        cursor:not-allowed;
-        transition:0.3s;
-    ">
-        Upload File
-    </button>
+</select>
+
+<br><br>
+
+<label><strong>Select File(s):</strong></label><br><br>
+
+<input
+type="file"
+id="fileInput"
+name="file"
+multiple
+accept=".xlsx,.csv"
+style="display:none;"
+>
+
+<button type="button" id="chooseBtn" style="
+padding:10px 18px;
+background-color:#6c757d;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+">
+Choose File(s)
+</button>
+
+<br><br>
+
+<div id="fileList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+
+<br>
+
+<button type="submit" id="uploadBtn" disabled style="
+padding:10px 20px;
+background-color:#9bbcd1;
+color:white;
+border:none;
+border-radius:6px;
+cursor:not-allowed;
+transition:0.3s;
+">
+Upload File
+</button>
 
 </form>
 
-<!-- Processing Area -->
+<!-- PROCESSING BAR -->
+
 <div id="processingBox" style="display:none; margin-top:20px;">
-    <strong id="statusText">Uploading...</strong>
-    <div style="
-        width:50%;
-        background-color:#e9ecef;
-        border-radius:8px;
-        margin-top:10px;
-    ">
-        <div id="progressBar" style="
-            width:0%;
-            height:20px;
-            background-color:#007bff;
-            border-radius:8px;
-            transition: width 0.3s;
-        "></div>
-    </div>
+
+<strong id="statusText">Uploading...</strong>
+
+<div style="
+width:50%;
+background-color:#e9ecef;
+border-radius:8px;
+margin-top:10px;
+">
+
+<div id="progressBar" style="
+width:0%;
+height:20px;
+background-color:#007bff;
+border-radius:8px;
+transition: width 0.3s;
+"></div>
+
+</div>
+
 </div>
 
 <hr>
 
 {% if latest_upload %}
+
 <div style="
-    margin-top:20px;
-    padding:15px;
-    background-color:#f8f9fa;
-    border-radius:8px;
-    width:50%;
+margin-top:20px;
+padding:15px;
+background-color:#f8f9fa;
+border-radius:8px;
+width:50%;
 ">
-    <h4>Latest Upload</h4>
-    <p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
-    <p>
-        <strong>Status:</strong>
-        {% if latest_upload.status == "Completed" %}
-            <span style="color:green;">Completed ✓</span>
-        {% elif latest_upload.status == "Processing" %}
-            <span style="color:orange;">Processing...</span>
-        {% else %}
-            <span style="color:red;">Failed</span>
-        {% endif %}
-    </p>
-</div>
+
+<h4>Latest Upload</h4>
+
+<p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
+
+<p>
+
+<strong>Status:</strong>
+
+{% if latest_upload.status == "Completed" %}
+<span style="color:green;">Completed ✓</span>
+
+{% elif latest_upload.status == "Processing" %}
+<span style="color:orange;">Processing...</span>
+
+{% elif latest_upload.status == "Failed" %}
+<span style="color:red;">Failed</span>
+
 {% endif %}
 
+</p>
+
+</div>
+
+{% endif %}
+
+
 <script>
-    const fileInput = document.getElementById("fileInput");
-    const chooseBtn = document.getElementById("chooseBtn");
-    const uploadBtn = document.getElementById("uploadBtn");
-    const fileNameDisplay = document.getElementById("fileName");
-    const form = document.getElementById("uploadForm");
-    const processingBox = document.getElementById("processingBox");
-    const progressBar = document.getElementById("progressBar");
-    const statusText = document.getElementById("statusText");
 
-    chooseBtn.addEventListener("click", function() {
-        fileInput.click();
-    });
+const fileInput = document.getElementById("fileInput");
+const chooseBtn = document.getElementById("chooseBtn");
+const uploadBtn = document.getElementById("uploadBtn");
+const fileList = document.getElementById("fileList");
 
-    fileInput.addEventListener("change", function() {
+const form = document.getElementById("uploadForm");
+const processingBox = document.getElementById("processingBox");
+const progressBar = document.getElementById("progressBar");
+const statusText = document.getElementById("statusText");
 
-        if (fileInput.files.length > 0) {
+let selectedFiles = [];
 
-            let names = [];
-            for (let i = 0; i < fileInput.files.length; i++) {
-                names.push(fileInput.files[i].name);
-            }
 
-            fileNameDisplay.textContent = names.join(", ");
+chooseBtn.addEventListener("click", function(){
+    fileInput.click();
+});
 
-            uploadBtn.disabled = false;
-            uploadBtn.style.backgroundColor = "#007bff";
-            uploadBtn.style.cursor = "pointer";
-        }
-    });
 
-    form.addEventListener("submit", function() {
+fileInput.addEventListener("change", function(){
 
-        processingBox.style.display = "block";
-        uploadBtn.disabled = true;
-        uploadBtn.style.backgroundColor = "#6c757d";
+    for (let i = 0; i < fileInput.files.length; i++) {
+        selectedFiles.push(fileInput.files[i]);
+    }
 
-        let progress = 0;
+    updateFileList();
+});
 
-        let interval = setInterval(function() {
-            progress += 10;
-            progressBar.style.width = progress + "%";
 
-            if (progress >= 40) {
-                statusText.innerText = "Processing...";
-            }
+function updateFileList(){
 
-            if (progress >= 100) {
-                clearInterval(interval);
-                statusText.innerText = "Completed ✓";
-            }
+fileList.innerHTML="";
 
-        }, 300);
-    });
+selectedFiles.forEach((file,index)=>{
+
+const tag=document.createElement("div");
+
+tag.style.background="#e9ecef";
+tag.style.padding="6px 10px";
+tag.style.borderRadius="6px";
+tag.style.display="flex";
+tag.style.alignItems="center";
+tag.style.gap="8px";
+
+tag.innerHTML=`
+${file.name}
+<span style="color:red;cursor:pointer;font-weight:bold;">✖</span>
+`;
+
+tag.querySelector("span").onclick=function(){
+
+selectedFiles.splice(index,1);
+updateFileList();
+
+};
+
+fileList.appendChild(tag);
+
+});
+
+uploadBtn.disabled = selectedFiles.length === 0;
+
+if(selectedFiles.length>0){
+
+uploadBtn.style.backgroundColor="#007bff";
+uploadBtn.style.cursor="pointer";
+
+}else{
+
+uploadBtn.style.backgroundColor="#9bbcd1";
+uploadBtn.style.cursor="not-allowed";
+
+}
+
+}
+
+
+form.addEventListener("submit",function(){
+
+processingBox.style.display="block";
+
+uploadBtn.disabled=true;
+
+let progress=0;
+
+let interval=setInterval(function(){
+
+progress+=10;
+
+progressBar.style.width=progress+"%";
+
+if(progress>=40){
+statusText.innerText="Processing...";
+}
+
+if(progress>=100){
+
+clearInterval(interval);
+
+statusText.innerText="Completed ✓";
+
+}
+
+},300);
+
+});
+
 </script>
 
 {% endblock %}
