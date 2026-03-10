@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
+import os
+
 
 # 1. The main template for the domain (e.g., Student Grading)
 class DomainTemplate(models.Model):
@@ -10,6 +12,7 @@ class DomainTemplate(models.Model):
 
     def __str__(self):
         return self.template_name
+
 
 # 2. The Rule for specific column ranges
 class ValidationRule(models.Model):
@@ -23,6 +26,7 @@ class ValidationRule(models.Model):
     def __str__(self):
         return self.rule_name
 
+
 # 3. The Rule for math formulas
 class FormulaRule(models.Model):
     template = models.ForeignKey(DomainTemplate, on_delete=models.CASCADE)
@@ -34,6 +38,7 @@ class FormulaRule(models.Model):
     def __str__(self):
         return self.formula_name
 
+
 # 4. The actual Excel File being uploaded
 class UploadedFile(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -44,7 +49,8 @@ class UploadedFile(models.Model):
     status = models.CharField(max_length=50, default='Pending')
 
     def __str__(self):
-        return self.file.name
+        return os.path.basename(self.file.name)
+
 
 # 5. The specific results for each row of the Excel file
 class ValidationResult(models.Model):
@@ -56,6 +62,7 @@ class ValidationResult(models.Model):
 
     def __str__(self):
         return f"Result for {self.file.file.name} - Row {self.row_index}"
+
 
 # 6. Tracking who did what
 class AuditLog(models.Model):

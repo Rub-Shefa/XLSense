@@ -1,5 +1,6 @@
 import os
-import time 
+import time
+import pandas as pd
 from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, authenticate, logout
@@ -18,6 +19,38 @@ def is_admin(user):
 
 def redirectBasedOnRole(user):
     return redirect("dashboard")
+
+
+def detect_column_types(df):
+    detected_types = {}
+
+    for column in df.columns:
+        sample = df[column].dropna()
+
+        if sample.empty:
+            detected_types[column] = "Empty"
+            continue
+
+        if pd.api.types.is_numeric_dtype(sample):
+            detected_types[column] = "Numeric"
+            continue
+
+        try:
+            pd.to_datetime(sample, errors='raise')
+            detected_types[column] = "Date"
+            continue
+        except:
+            pass
+
+        numeric_count = pd.to_numeric(sample, errors='coerce').notna().sum()
+        total_count = len(sample)
+
+        if numeric_count > 0 and numeric_count < total_count:
+            detected_types[column] = "Mixed"
+        else:
+            detected_types[column] = "Text"
+
+    return detected_types
 
 
 # =========================
@@ -194,6 +227,9 @@ def upload_file_view(request):
             messages.error(request, "Selected domain template not found.")
             return redirect("upload_file")
 
+        success_count = 0
+        parsed_files = []
+
         for file in files:
             if not file.name.endswith((".xlsx", ".csv")):
                 messages.error(request, f"{file.name} is not supported.")
@@ -207,17 +243,41 @@ def upload_file_view(request):
             )
 
             try:
-                time.sleep(2)
+                file.seek(0)
+
+                if file.name.endswith(".csv"):
+                    df = pd.read_csv(file)
+                else:
+                    df = pd.read_excel(file)
+
+                df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
+
+                if df.empty:
+                    uploaded_file.status = "Failed"
+                    uploaded_file.save()
+                    messages.error(request, f"{file.name} is empty.")
+                    continue
+
+                preview_data = df.head(5).fillna("").to_dict(orient="records")
+                detected_types = detect_column_types(df)
 
                 uploaded_file.status = "Completed"
-                uploaded_file.processed_time = timezone.now() 
+                uploaded_file.processed_time = timezone.now()
                 uploaded_file.save()
+
+                parsed_files.append({
+                    "file_name": file.name,
+                    "preview_data": preview_data,
+                    "detected_types": detected_types,
+                })
 
                 AuditLog.objects.create(
                     user=request.user,
                     action_type="File Upload",
-                    details=f"Successfully uploaded: {file.name} | Domain: {selected_domain}"
+                    details=f"Successfully uploaded and parsed: {file.name} | Domain: {selected_domain}"
                 )
+
+                success_count += 1
 
             except Exception as e:
                 uploaded_file.status = "Failed"
@@ -228,14 +288,17 @@ def upload_file_view(request):
                     action_type="Upload Error",
                     details=f"Failed to process {file.name}: {str(e)}"
                 )
+
                 messages.error(request, f"{file.name} failed to process.")
 
-        messages.success(request, "File(s) processed successfully.")
-        
-       
-        if request.user.is_staff or is_admin(request.user): 
-             return redirect("admin_dashboard")
-        
+        request.session["parsed_files"] = parsed_files
+
+        if success_count > 0:
+            messages.success(request, "File(s) processed successfully.")
+
+        if request.user.is_staff or is_admin(request.user):
+            return redirect("admin_dashboard")
+
         return redirect("upload_file")
 
     return render(
@@ -244,8 +307,10 @@ def upload_file_view(request):
         {
             "latest_upload": latest_upload,
             "domains": domains,
+            "parsed_files": request.session.get("parsed_files"),
         },
     )
+
 
 # =========================
 # Upload History
@@ -254,10 +319,8 @@ def upload_file_view(request):
 @login_required
 def upload_history_view(request):
     if request.user.is_staff:
-        # Admin sees everything
         files = UploadedFile.objects.all().order_by("-upload_time")
     else:
-        # Regular users only see what they uploaded
         files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
-    
+
     return render(request, "upload_history.html", {"files": files})
