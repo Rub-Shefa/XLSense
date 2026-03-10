@@ -3,56 +3,23 @@
 
 <h2>Upload Excel or CSV File</h2>
 
-{% if messages %}
-    {% for message in messages %}
-        <div style="
-            padding:10px;
-            margin-bottom:15px;
-            border-radius:5px;
-            background-color:
-            {% if message.tags == 'error' %}#f8d7da{% else %}#d4edda{% endif %};
-            color:
-            {% if message.tags == 'error' %}#721c24{% else %}#155724{% endif %};
-        ">
-            {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <form method="POST" enctype="multipart/form-data" id="uploadForm">
 {% csrf_token %}
 
-<!-- DOMAIN SELECTION -->
-
 <label><strong>Select Domain:</strong></label><br><br>
 
-<select name="domain" id="domainSelect" style="
-padding:8px;
-border-radius:6px;
-border:1px solid #ccc;
-width:250px;
-">
-
+<select name="domain" id="domainSelect" style="padding:8px; border-radius:6px; border:1px solid #ccc; width:250px;">
 <option value="">-- Select Domain --</option>
-
 {% for d in domains %}
 <option value="{{ d.domain_type }}">{{ d.domain_type }}</option>
 {% endfor %}
-
 </select>
 
 <br><br>
 
 <label><strong>Select File(s):</strong></label><br><br>
 
-<input
-type="file"
-id="fileInput"
-name="file"
-multiple
-accept=".xlsx,.csv"
-style="display:none;"
->
+<input type="file" id="fileInput" name="file" multiple accept=".xlsx,.csv" style="display:none;">
 
 <button type="button" id="chooseBtn" style="
 padding:10px 18px;
@@ -60,8 +27,7 @@ background-color:#6c757d;
 color:white;
 border:none;
 border-radius:6px;
-cursor:pointer;
-">
+cursor:pointer;">
 Choose File(s)
 </button>
 
@@ -77,34 +43,31 @@ background-color:#9bbcd1;
 color:white;
 border:none;
 border-radius:6px;
-cursor:not-allowed;
-transition:0.3s;
-">
+cursor:not-allowed;">
 Upload File
 </button>
 
 </form>
 
-<!-- PROCESSING BAR -->
+<!-- PROGRESS BOX -->
 
-<div id="processingBox" style="display:none; margin-top:20px;">
+<div id="processingBox" style="display:none; margin-top:20px; width:50%;">
 
 <strong id="statusText">Uploading...</strong>
 
 <div style="
-width:50%;
+width:100%;
 background-color:#e9ecef;
 border-radius:8px;
-margin-top:10px;
-">
+margin-top:10px;">
 
 <div id="progressBar" style="
 width:0%;
 height:20px;
 background-color:#007bff;
 border-radius:8px;
-transition: width 0.3s;
-"></div>
+transition: width 0.2s;">
+</div>
 
 </div>
 
@@ -113,40 +76,72 @@ transition: width 0.3s;
 <hr>
 
 {% if latest_upload %}
-
-<div style="
-margin-top:20px;
-padding:15px;
-background-color:#f8f9fa;
-border-radius:8px;
-width:50%;
-">
-
+<div style="margin-top:20px; padding:15px; background-color:#f8f9fa; border-radius:8px; width:50%;">
 <h4>Latest Upload</h4>
-
 <p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
-
-<p>
-
-<strong>Status:</strong>
-
+<p><strong>Status:</strong>
 {% if latest_upload.status == "Completed" %}
 <span style="color:green;">Completed ✓</span>
-
-{% elif latest_upload.status == "Processing" %}
-<span style="color:orange;">Processing...</span>
-
 {% elif latest_upload.status == "Failed" %}
 <span style="color:red;">Failed</span>
-
+{% endif %}
+</p>
+</div>
 {% endif %}
 
-</p>
+{% if parsed_files %}
+
+{% for item in parsed_files %}
+
+<div style="margin-top:30px; padding:20px; background:#ffffff; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.08); overflow:auto;">
+
+<h3>{{ item.file_name|cut:"uploads/" }}</h3>
+
+<h4>Detected Column Types</h4>
+
+<table style="width:100%; border-collapse:collapse;">
+<thead>
+<tr style="background:#f5f6fa;">
+<th style="padding:10px;">Column</th>
+<th style="padding:10px;">Detected Type</th>
+</tr>
+</thead>
+<tbody>
+{% for column, dtype in item.detected_types.items %}
+<tr style="border-top:1px solid #eee;">
+<td style="padding:10px;">{{ column }}</td>
+<td style="padding:10px;">{{ dtype }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h4 style="margin-top:25px;">Spreadsheet Preview</h4>
+
+<table style="width:100%; border-collapse:collapse;">
+<thead>
+<tr style="background:#f5f6fa;">
+{% for key in item.preview_data.0.keys %}
+<th style="padding:10px;">{{ key }}</th>
+{% endfor %}
+</tr>
+</thead>
+<tbody>
+{% for row in item.preview_data %}
+<tr style="border-top:1px solid #eee;">
+{% for value in row.values %}
+<td style="padding:10px;">{{ value }}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
 
 </div>
 
-{% endif %}
+{% endfor %}
 
+{% endif %}
 
 <script>
 
@@ -162,97 +157,100 @@ const statusText = document.getElementById("statusText");
 
 let selectedFiles = [];
 
-
 chooseBtn.addEventListener("click", function(){
     fileInput.click();
 });
 
-
 fileInput.addEventListener("change", function(){
 
     for (let i = 0; i < fileInput.files.length; i++) {
-        selectedFiles.push(fileInput.files[i]);
+        const exists = selectedFiles.some(f => f.name === fileInput.files[i].name);
+
+        if (!exists) {
+            selectedFiles.push(fileInput.files[i]);
+        }
     }
 
     updateFileList();
 });
 
-
 function updateFileList(){
 
-fileList.innerHTML="";
+    fileList.innerHTML="";
 
-selectedFiles.forEach((file,index)=>{
+    selectedFiles.forEach((file,index)=>{
 
-const tag=document.createElement("div");
+        const tag=document.createElement("div");
 
-tag.style.background="#e9ecef";
-tag.style.padding="6px 10px";
-tag.style.borderRadius="6px";
-tag.style.display="flex";
-tag.style.alignItems="center";
-tag.style.gap="8px";
+        tag.style.background="#e9ecef";
+        tag.style.padding="6px 10px";
+        tag.style.borderRadius="6px";
+        tag.style.display="flex";
+        tag.style.alignItems="center";
+        tag.style.gap="8px";
 
-tag.innerHTML=`
-${file.name}
-<span style="color:red;cursor:pointer;font-weight:bold;">✖</span>
-`;
+        tag.innerHTML=`
+        ${file.name}
+        <span style="color:red;cursor:pointer;font-weight:bold;">✖</span>
+        `;
 
-tag.querySelector("span").onclick=function(){
+        tag.querySelector("span").onclick=function(){
+            selectedFiles.splice(index,1);
+            updateFileList();
+        };
 
-selectedFiles.splice(index,1);
-updateFileList();
+        fileList.appendChild(tag);
 
-};
+    });
 
-fileList.appendChild(tag);
+    uploadBtn.disabled = selectedFiles.length === 0;
 
-});
-
-uploadBtn.disabled = selectedFiles.length === 0;
-
-if(selectedFiles.length>0){
-
-uploadBtn.style.backgroundColor="#007bff";
-uploadBtn.style.cursor="pointer";
-
-}else{
-
-uploadBtn.style.backgroundColor="#9bbcd1";
-uploadBtn.style.cursor="not-allowed";
+    if(selectedFiles.length>0){
+        uploadBtn.style.backgroundColor="#007bff";
+        uploadBtn.style.cursor="pointer";
+    }else{
+        uploadBtn.style.backgroundColor="#9bbcd1";
+        uploadBtn.style.cursor="not-allowed";
+    }
 
 }
 
-}
+form.addEventListener("submit", function(e){
 
+    e.preventDefault();
 
-form.addEventListener("submit",function(){
+    processingBox.style.display = "block";
+    uploadBtn.disabled = true;
 
-processingBox.style.display="block";
+    let progress = 0;
 
-uploadBtn.disabled=true;
+    let interval = setInterval(function(){
 
-let progress=0;
+        if(progress < 50){
+            progress += 5;
+            statusText.innerText = "Uploading...";
+        }
+        else if(progress < 90){
+            progress += 2;
+            statusText.innerText = "Processing...";
+        }
+        else if(progress < 100){
+            progress += 1;
+        }
 
-let interval=setInterval(function(){
+        progressBar.style.width = progress + "%";
 
-progress+=10;
+        if(progress >= 100){
+            clearInterval(interval);
+            statusText.innerText = "Completed ✓";
 
-progressBar.style.width=progress+"%";
+            setTimeout(function(){
+                form.submit();
+            }, 300);
 
-if(progress>=40){
-statusText.innerText="Processing...";
-}
+        }
 
-if(progress>=100){
-
-clearInterval(interval);
-
-statusText.innerText="Completed ✓";
-
-}
-
-},300);
+    }, 120);
 
 });
 
