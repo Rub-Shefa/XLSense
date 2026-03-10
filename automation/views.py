@@ -232,9 +232,6 @@ def upload_file_view(request):
 
         messages.success(request, "File(s) processed successfully.")
         
-       
-        if request.user.is_staff or is_admin(request.user): 
-             return redirect("admin_dashboard")
         
         return redirect("upload_file")
 
