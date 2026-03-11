@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div style="padding: 20px;">
+    <h2>Validation Report: {{ uploaded_file.file.name }}</h2>
+    <div style="background: #fde8e8; border-left: 5px solid #ef4444; padding: 15px; margin-bottom: 20px;">
+        <h4 style="color: #9b1c1c;">Issues Detected</h4>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="text-align: left; border-bottom: 1px solid #ddd;">
+                    <th>Row</th>
+                    <th>Column</th>
+                    <th>Error Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results %}
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td>{{ result.row_index }}</td>
+                        <td>{{ result.column_name }}</td>
+                        <td>{{ result.error_details }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="3">No errors found! Great data quality.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a href="{% url 'upload_history' %}" class="btn">Back to History</a>
+</div>
+{% endblock %}

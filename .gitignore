@@ -1,12 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
 .env
 venv/
-__pycache__/
-*.py[codz]
-*.pyc
+env/
 
-
-docs/
-uploads/
-
-database/
+# Database
 db.sqlite3
+database/
+
+# Documentation
+docs/
+
+# --- Media and Uploads ---
+# Ignore all files inside the uploads folder...
+uploads/*
+
+# ...BUT do not ignore the .gitkeep file. 
+# This ensures the folder is created on your teammates' machines.
+!.gitkeep
+
+# Ignore common Excel/CSV test files in the root or other folders
+*.xlsx
+*.csv

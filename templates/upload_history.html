@@ -69,10 +69,12 @@
                             📥
                         </a>
                         {% if file.status == 'Completed' %}
-                            <a href="#" style="color: #3182ce; text-decoration: none; font-size: 0.85rem; font-weight: 600;">Report</a>
-                        {% else %}
-                            <span style="color: #cbd5e0; font-size: 0.85rem;">N/A</span>
-                        {% endif %}
+    <a href="{% url 'validation_report' file.id %}" style="color: #3182ce; text-decoration: none; font-size: 0.85rem; font-weight: 600; border-bottom: 1px solid transparent; transition: all 0.2s;" onmouseover="this.style.borderBottom='1px solid #3182ce'" onmouseout="this.style.borderBottom='1px solid transparent'">
+        📊 View Report
+    </a>
+{% else %}
+    <span style="color: #cbd5e0; font-size: 0.85rem;">N/A</span>
+{% endif %}
                     </div>
                 </td>
             </tr>

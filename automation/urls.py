@@ -17,4 +17,6 @@ urlpatterns = [
     path("upload/", views.upload_file_view, name="upload_file"),
     # History
     path("history/", views.upload_history_view, name="upload_history"),
+    # Report
+    path("report/<int:file_id>/", views.validation_report_view, name="validation_report"),
 ]

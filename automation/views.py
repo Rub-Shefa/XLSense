@@ -8,8 +8,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.models import User
+from .utils import validate_excel_data
 
-from .models import DomainTemplate, ValidationRule, FormulaRule, AuditLog, UploadedFile
+from .models import DomainTemplate, ValidationRule, FormulaRule, AuditLog, UploadedFile, ValidationResult
 from .forms import CustomUserCreationForm
 
 
@@ -264,6 +265,7 @@ def upload_file_view(request):
                 uploaded_file.status = "Completed"
                 uploaded_file.processed_time = timezone.now()
                 uploaded_file.save()
+                validate_excel_data(uploaded_file)
 
                 parsed_files.append({
                     "file_name": file.name,
@@ -296,9 +298,6 @@ def upload_file_view(request):
         if success_count > 0:
             messages.success(request, "File(s) processed successfully.")
 
-        if request.user.is_staff or is_admin(request.user):
-            return redirect("admin_dashboard")
-
         return redirect("upload_file")
 
     return render(
@@ -324,3 +323,33 @@ def upload_history_view(request):
         files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
 
     return render(request, "upload_history.html", {"files": files})
+
+
+
+# =========================
+# Validation Report Rule
+# =========================
+
+
+@login_required
+def validation_report_view(request, file_id):
+    """
+    Fetches the specific file and all its validation errors 
+    to display on the Report page.
+    """
+    # 1. Fetch the file (ensures user can only see their own file)
+    if is_admin(request.user):
+        uploaded_file = UploadedFile.objects.get(id=file_id)
+    else:
+        uploaded_file = UploadedFile.objects.get(id=file_id, user=request.user)
+
+    # 2. Get all 'Failed' results for this specific file
+    results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
+    
+    context = {
+        "uploaded_file": uploaded_file,
+        "results": results,
+        "page_title": "Validation Report"
+    }
+
+    return render(request, "report.html", context)
