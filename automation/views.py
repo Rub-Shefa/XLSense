@@ -258,7 +258,7 @@ def upload_file_view(request):
                     messages.error(request, f"{file.name} is empty.")
                     continue
 
-                preview_data = df.head(5).fillna("").to_dict(orient="records")
+                preview_data = df.fillna("").to_dict(orient="records")
                 detected_types = detect_column_types(df)
 
                 uploaded_file.status = "Completed"
