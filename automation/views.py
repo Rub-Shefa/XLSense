@@ -291,12 +291,14 @@ def upload_file_view(request):
 
                 messages.error(request, f"{file.name} failed to process.")
 
-        messages.success(request, "File(s) processed successfully.")
-        
-       
-        if request.user.is_staff or is_admin(request.user): 
-             return redirect("admin_dashboard")
-        
+        request.session["parsed_files"] = parsed_files
+
+        if success_count > 0:
+            messages.success(request, "File(s) processed successfully.")
+
+        if request.user.is_staff or is_admin(request.user):
+            return redirect("admin_dashboard")
+
         return redirect("upload_file")
 
     return render(
