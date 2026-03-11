@@ -48,7 +48,8 @@ class UploadedFile(models.Model):
     processed_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=50, default='Pending')
 
-    def __str__(self):
+    @property
+    def short_name(self):
         return os.path.basename(self.file.name)
 
 

@@ -1,30 +1,194 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<div style="padding: 20px;">
-    <h2>Validation Report: {{ uploaded_file.file.name }}</h2>
-    <div style="background: #fde8e8; border-left: 5px solid #ef4444; padding: 15px; margin-bottom: 20px;">
-        <h4 style="color: #9b1c1c;">Issues Detected</h4>
-        <table style="width: 100%; border-collapse: collapse;">
-            <thead>
-                <tr style="text-align: left; border-bottom: 1px solid #ddd;">
-                    <th>Row</th>
-                    <th>Column</th>
-                    <th>Error Details</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for result in results %}
-                    <tr style="border-bottom: 1px solid #eee;">
-                        <td>{{ result.row_index }}</td>
-                        <td>{{ result.column_name }}</td>
-                        <td>{{ result.error_details }}</td>
-                    </tr>
-                {% empty %}
-                    <tr><td colspan="3">No errors found! Great data quality.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="report-container">
+    <div class="report-header">
+        <div class="header-main">
+            <h1>Validation Report</h1>
+            <p class="file-subtitle">File: <span>{{ uploaded_file.short_name }}</span></p>
+        </div>
+        <div class="header-actions">
+            <a href="{% url 'upload_history' %}" class="btn-secondary-ghost">Back to History</a>
+        </div>
     </div>
-    <a href="{% url 'upload_history' %}" class="btn">Back to History</a>
+
+    {% if results %}
+        <div class="summary-card has-errors">
+            <div class="summary-content">
+                <span class="icon-sm">⚠️</span>
+                <div class="summary-text">
+                    <h3>Issues Detected</h3>
+                    <p>Found <strong>{{ results|length }}</strong> validation errors that require attention.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="styled-table">
+                <thead>
+                    <tr>
+                        <th class="col-row">Row</th>
+                        <th class="col-field">Field/Column</th>
+                        <th class="col-desc">Error Description</th>
+                        <th class="col-status">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr class="error-row">
+                        <td class="col-row text-center font-bold row-index-cell">{{ result.row_index }}</td>
+                        <td class="col-field font-medium">{{ result.column_name }}</td>
+                        <td class="col-desc text-error">{{ result.error_details }}</td>
+                        <td class="col-status text-center">
+                            <span class="badge badge-error">Failed</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="clean-state-card">
+            <div class="success-visual">
+                <div class="blob-bg"></div>
+                <img src="https://cdn-icons-png.flaticon.com/512/4436/4436481.png" alt="Success">
+            </div>
+            <h2>Data is Clean!</h2>
+            <p>No errors found in <strong>{{ uploaded_file.short_name }}</strong>. Ready for processing.</p>
+            
+            <div class="success-actions">
+                <a href="{% url 'upload_history' %}" class="btn-primary-gradient">Return to History</a>
+            </div>
+        </div>
+    {% endif %}
 </div>
+
+<style>
+    :root {
+        --primary-blue: #2563eb;
+        --error-red: #e11d48;
+        --error-bg: #fff1f2;
+        --success-green: #059669;
+        --text-main: #1e293b;
+        --text-sub: #64748b;
+        --border-color: #e2e8f0;
+        --gradient-start: #667eea;
+        --gradient-end: #764ba2;
+    }
+
+    .report-container {
+        padding: 20px 40px;
+        max-width: 1000px;
+        margin: 0 auto;
+        /* Standardized font across the app */
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* HEADER STYLES */
+    .report-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 15px;
+    }
+    .report-header h1 { margin: 0; font-size: 20px; color: var(--text-main); font-weight: 700; }
+    .file-subtitle { color: var(--text-sub); margin-top: 2px; font-size: 13px; }
+    .file-subtitle span { color: var(--primary-blue); font-weight: 600; }
+
+    /* --- SUCCESS CARD (FIXED SIZING) --- */
+    .clean-state-card {
+        text-align: center;
+        padding: 40px 20px;
+        background: white;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+
+    .success-visual { 
+        position: relative; 
+        margin-bottom: 15px; 
+        display: inline-block; 
+    }
+
+    .success-visual img { 
+        width: 65px; /* Fixed standard size */
+        position: relative; 
+        z-index: 2; 
+    }
+
+    .blob-bg { 
+        position: absolute; 
+        top: 50%; 
+        left: 50%; 
+        transform: translate(-50%, -50%); 
+        width: 90px; 
+        height: 90px; 
+        background: #ecfdf5; 
+        border-radius: 50%; 
+        z-index: 1; 
+        filter: blur(15px); 
+    }
+
+    .clean-state-card h2 { font-size: 22px; color: var(--success-green); margin-bottom: 8px; font-weight: 700; }
+    .clean-state-card p { font-size: 14px; color: var(--text-sub); margin-bottom: 25px; }
+
+    /* --- TABLE STYLES --- */
+    .table-wrapper { background: white; border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; }
+    .styled-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+    .styled-table th { padding: 10px 15px; background: #f8fafc; color: var(--text-sub); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border-color); }
+    .styled-table td { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; word-wrap: break-word; }
+
+    .col-row { width: 80px; text-align: center; }
+    .col-field { width: 180px; text-align: left; }
+    .col-desc { width: auto; text-align: left; }
+    .col-status { width: 120px; text-align: center !important; }
+
+    /* --- BUTTONS WITH RESTORED EFFECTS --- */
+    .btn-primary-gradient {
+        display: inline-block;
+        padding: 10px 25px;
+        background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+        color: white !important;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    }
+    .btn-primary-gradient:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 20px rgba(118, 75, 162, 0.3);
+        filter: brightness(1.1);
+    }
+
+    .btn-secondary-ghost {
+        display: inline-block;
+        text-decoration: none;
+        padding: 7px 18px;
+        border: 1px solid var(--border-color);
+        color: var(--text-sub);
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.25s ease;
+    }
+    .btn-secondary-ghost:hover {
+        background: #f8fafc;
+        border-color: var(--text-sub);
+        color: var(--text-main);
+        transform: translateY(-2px);
+    }
+
+    /* ERROR HELPERS */
+    .summary-card { border-radius: 8px; padding: 12px 20px; margin-bottom: 20px; background-color: var(--error-bg); border: 1px solid #fecaca; border-left: 5px solid var(--error-red); }
+    .text-error { color: var(--error-red); font-weight: 500; }
+    .badge-error { background-color: #ffe4e6; color: #be123c; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .row-index-cell { border-left: 3px solid transparent; transition: 0.2s; }
+    .error-row:hover { background-color: #fffafb; }
+    .error-row:hover .row-index-cell { border-left-color: var(--error-red); }
+</style>
 {% endblock %}
