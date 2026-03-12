@@ -54,10 +54,6 @@ def detect_column_types(df):
     return detected_types
 
 
-# =========================
-# Authentication Views
-# =========================
-
 def login_view(request):
 
     if request.user.is_authenticated:
@@ -119,10 +115,6 @@ def logout_view(request):
     return redirect("login")
 
 
-# =========================
-# Dashboard
-# =========================
-
 @login_required
 def dashboard_view(request):
 
@@ -165,10 +157,6 @@ def admin_dashboard_view(request):
     return render(request, "dashboard.html", context)
 
 
-# =========================
-# Manage Templates
-# =========================
-
 @login_required
 def manage_templates_view(request):
 
@@ -197,10 +185,6 @@ def manage_templates_view(request):
         },
     )
 
-
-# =========================
-# Upload File
-# =========================
 
 @login_required
 def upload_file_view(request):
@@ -265,6 +249,7 @@ def upload_file_view(request):
                 uploaded_file.status = "Completed"
                 uploaded_file.processed_time = timezone.now()
                 uploaded_file.save()
+
                 validate_excel_data(uploaded_file)
 
                 parsed_files.append({
@@ -300,20 +285,22 @@ def upload_file_view(request):
 
         return redirect("upload_file")
 
+    parsed_files = request.session.get("parsed_files", None)
+
+    if not latest_upload:
+        request.session.pop("parsed_files", None)
+        parsed_files = None
+
     return render(
         request,
         "upload.html",
         {
             "latest_upload": latest_upload,
             "domains": domains,
-            "parsed_files": request.session.get("parsed_files"),
+            "parsed_files": parsed_files,
         },
     )
 
-
-# =========================
-# Upload History
-# =========================
 
 @login_required
 def upload_history_view(request):
@@ -325,27 +312,16 @@ def upload_history_view(request):
     return render(request, "upload_history.html", {"files": files})
 
 
-
-# =========================
-# Validation Report Rule
-# =========================
-
-
 @login_required
 def validation_report_view(request, file_id):
-    """
-    Fetches the specific file and all its validation errors 
-    to display on the Report page.
-    """
-    # 1. Fetch the file (ensures user can only see their own file)
+
     if is_admin(request.user):
         uploaded_file = UploadedFile.objects.get(id=file_id)
     else:
         uploaded_file = UploadedFile.objects.get(id=file_id, user=request.user)
 
-    # 2. Get all 'Failed' results for this specific file
     results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
-    
+
     context = {
         "uploaded_file": uploaded_file,
         "results": results,
