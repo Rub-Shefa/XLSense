@@ -61,16 +61,22 @@
     background:#ffffff;
     border-radius:12px;
     box-shadow:0 2px 8px rgba(0,0,0,0.08);
-    max-width:100%;
+    width:100%;
+    max-width:calc(100vw - 360px);
     overflow:hidden;
+    box-sizing:border-box;
 }
 
 .table-wrap{
+    width:100%;
+    max-width:100%;
     overflow-x:auto;
+    overflow-y:hidden;
     border:1px solid #d0d7de;
     border-radius:10px;
     margin-top:10px;
-    max-width:100%;
+    display:block;
+    box-sizing:border-box;
 }
 </style>
 
@@ -154,13 +160,16 @@ Upload File
 
 <h4>Detected Column Types</h4>
 
-<table style="width:100%; border-collapse:collapse;">
+<div class="table-wrap">
+<table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
+
 <thead>
 <tr style="background:#eef5fb;">
 <th style="padding:12px;text-align:center;">Column</th>
 <th style="padding:12px;text-align:center;">Detected Type</th>
 </tr>
 </thead>
+
 <tbody>
 {% for column, dtype in item.detected_types.items %}
 <tr>
@@ -169,13 +178,15 @@ Upload File
 </tr>
 {% endfor %}
 </tbody>
+
 </table>
+</div>
 
 <h4 style="margin-top:25px;">Spreadsheet Preview</h4>
 
 <div class="table-wrap">
 
-<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;background:white;">
+<table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
 
 <thead>
 <tr style="background:#eef5fb;">
