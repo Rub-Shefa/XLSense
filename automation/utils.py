@@ -67,17 +67,15 @@ def validate_excel_data(uploaded_file_obj):
                     continue 
 
         # --- PART B: FORMULA AUDIT ---
-        # We use a clean context for math
         row_context = {str(k).replace(" ", ""): (0 if pd.isna(v) or v == "" else v) for k, v in row.items()}
         for f_rule in formula_rules:
             actual_target_col = find_best_column(f_rule.target_column, df.columns)
             if actual_target_col:
                 try:
-                    excel_val = float(row[actual_target_col])
-                    clean_expr = f_rule.condition_expression.replace(" ", "")
-                    expected_val = eval(clean_expr, {"__builtins__": None, "float": float, "int": int}, row_context)
+                    excel_val = row[actual_target_col]
+                    expected_val = eval(f_rule.condition_expression, {"__builtins__": None}, row_context)
                     
-                    if abs(excel_val - float(expected_val)) > 0.01:
+                    if str(excel_val).strip() != str(expected_val).strip():
                         ValidationResult.objects.create(
                             file=uploaded_file_obj,
                             row_index=index + 1,
@@ -88,3 +86,35 @@ def validate_excel_data(uploaded_file_obj):
                 except:
                     continue
     return True
+
+def get_formula_recommendations(uploaded_file_obj, df_columns):
+    template = uploaded_file_obj.template
+    all_formula_rules = FormulaRule.objects.filter(template=template)
+    
+    recommendations = []
+    
+    for rule in all_formula_rules:
+        actual_col = find_best_column(rule.target_column, df_columns)
+        
+        if not actual_col:
+            recommendations.append({
+                "column": rule.target_column,
+                "formula": rule.condition_expression, # e.g., "Price * 0.15"
+                "message": f"Suggested: Create '{rule.target_column}'. Use the formula below to calculate it based on your other data."
+            })
+            
+    return recommendations
+
+def calculate_quality_score(uploaded_file_obj, total_rows):
+    # Get count of unique rows that have at least one error
+    error_rows_count = ValidationResult.objects.filter(
+        file=uploaded_file_obj, 
+        is_valid=False
+    ).values('row_index').distinct().count()
+    
+    if total_rows == 0:
+        return 0
+        
+    success_rows = total_rows - error_rows_count
+    score = (success_rows / total_rows) * 100
+    return round(score, 2)

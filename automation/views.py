@@ -8,8 +8,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.models import User
-from .utils import validate_excel_data
-
+from django.shortcuts import render, get_object_or_404
+from .utils import validate_excel_data, get_formula_recommendations, calculate_quality_score
 from .models import DomainTemplate, ValidationRule, FormulaRule, AuditLog, UploadedFile, ValidationResult
 from .forms import CustomUserCreationForm
 
@@ -314,17 +314,42 @@ def upload_history_view(request):
 
 @login_required
 def validation_report_view(request, file_id):
-
-    if is_admin(request.user):
-        uploaded_file = UploadedFile.objects.get(id=file_id)
+    # Use get_object_or_404 to prevent 500 errors if the ID is wrong
+    if request.user.is_staff:
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
-        uploaded_file = UploadedFile.objects.get(id=file_id, user=request.user)
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
 
+    # 1. Get existing validation errors
     results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
+
+    # 2. Process the file for dynamic insights
+    try:
+        file_path = uploaded_file.file.path
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+            
+        df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
+        
+        total_rows = len(df)
+        
+        # Calculate Score & Get Recs
+        score = calculate_quality_score(uploaded_file, total_rows)
+        recommendations = get_formula_recommendations(uploaded_file, df.columns)
+        
+    except Exception as e:
+        # Fallback if file reading fails
+        score = 0
+        recommendations = []
+        print(f"Error processing file for report: {e}")
 
     context = {
         "uploaded_file": uploaded_file,
         "results": results,
+        "quality_score": score,
+        "recommendations": recommendations,
         "page_title": "Validation Report"
     }
 

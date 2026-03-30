@@ -12,6 +12,17 @@
         </div>
     </div>
 
+    <div class="quality-score-card">
+        <div class="score-info">
+            <h3>Data Quality Score</h3>
+            <span class="score-percentage">{{ quality_score|floatformat:2 }}%</span>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" style="width: {{ quality_score }}%;"></div>
+        </div>
+        <p class="score-desc">This score represents the percentage of rows that passed all validation rules.</p>
+    </div>
+
     {% if results %}
         <div class="summary-card has-errors">
             <div class="summary-content">
@@ -47,6 +58,36 @@
                 </tbody>
             </table>
         </div>
+
+        <div class="recommendations-wrapper">
+            <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
+            
+            {% if recommendations %}
+                <div class="recommendation-grid">
+                    {% for rec in recommendations %}
+                    <div class="rec-card">
+                        <div class="rec-header">
+                            <h4>Missing Column: <span>{{ rec.column }}</span></h4>
+                        </div>
+                        <div class="rec-body">
+                            <p>{{ rec.message }}</p>
+                            <div class="formula-box">
+                                <strong>Formula:</strong> <code>{{ rec.formula }}</code>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="no-rec-card">
+                    <div class="no-rec-content">
+                        <span class="check-icon">✓</span>
+                        <p><strong>Structure Verified:</strong> All expected columns and formulas are present in your file.</p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
     {% else %}
         <div class="clean-state-card">
             <div class="success-visual">
@@ -55,7 +96,6 @@
             </div>
             <h2>Data is Clean!</h2>
             <p>No errors found in <strong>{{ uploaded_file.short_name }}</strong>. Ready for processing.</p>
-            
             <div class="success-actions">
                 <a href="{% url 'upload_history' %}" class="btn-primary-gradient">Return to History</a>
             </div>
@@ -190,5 +230,190 @@
     .row-index-cell { border-left: 3px solid transparent; transition: 0.2s; }
     .error-row:hover { background-color: #fffafb; }
     .error-row:hover .row-index-cell { border-left-color: var(--error-red); }
+
+    /* --- RECOMMENDATIONS STYLES --- */
+    .recommendations-wrapper {
+        margin-top: 30px;
+        animation: fadeIn 0.4s ease-out;
+    }
+    
+    .section-title {
+        font-size: 16px;
+        color: var(--text-main);
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .recommendation-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 15px;
+    }
+
+    .rec-card {
+        background: white;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        border-left: 5px solid var(--primary-blue); /* Blue accent line */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        overflow: hidden;
+    }
+
+    .rec-header {
+        background: #f8fafc;
+        padding: 10px 15px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .rec-header h4 {
+        margin: 0;
+        font-size: 13px;
+        color: var(--text-sub);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .rec-header span {
+        color: var(--primary-blue);
+        font-weight: 700;
+    }
+
+    .rec-body {
+        padding: 15px;
+    }
+
+    .rec-body p {
+        margin: 0 0 12px 0;
+        font-size: 13px;
+        color: var(--text-main);
+    }
+
+    .formula-box {
+        background: #eff6ff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #1e3a8a;
+        border: 1px dashed #bfdbfe;
+    }
+    
+    .formula-box code {
+        font-family: monospace;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+    }
+
+    /* NO RECOMMENDATIONS STATE */
+    .no-rec-card { 
+        background: #f8fafc; border: 1px dashed var(--border-color); 
+        border-radius: 8px; 
+        padding: 20px; 
+        text-align: center; 
+    }
+
+    .no-rec-content { 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        gap: 12px; 
+    }
+
+    .check-icon { 
+        background: #dcfce7; 
+        color: #15803d; 
+        width: 24px; 
+        height: 24px; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        border-radius: 50%; 
+        font-weight: bold; 
+    }
+
+    /* SUCCESS STATE */
+    .clean-state-card { 
+        text-align: center; 
+        padding: 40px 20px; 
+        background: white; 
+        border-radius: 12px; 
+        border: 1px solid var(--border-color); 
+    }
+
+    .success-visual { 
+        position: relative; 
+        margin-bottom: 15px; 
+        display: inline-block; 
+    }
+
+    .success-visual img { 
+        width: 65px; 
+        position: relative; 
+        z-index: 2; 
+    }
+    .blob-bg { 
+        position: absolute; 
+        top: 50%; left: 50%; 
+        transform: translate(-50%, -50%); 
+        width: 90px; height: 90px; 
+        background: #ecfdf5; 
+        border-radius: 50%; 
+        z-index: 1; 
+        filter: blur(15px); 
+    }
+
+    
+    .quality-score-card {
+    background: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-left: 5px solid var(--primary-blue); /* Matching your error card accent */
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.score-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 12px;
+}
+
+.score-info h3 { 
+    margin: 0; 
+    font-size: 14px; 
+    color: var(--text-sub); 
+    text-transform: uppercase; 
+    letter-spacing: 0.05em;
+}
+
+.score-percentage { 
+    font-size: 28px; 
+    font-weight: 800; 
+    color: var(--text-main); 
+    line-height: 1;
+}
+
+.progress-container {
+    height: 8px; /* Slimmer, modern look */
+    background: #f1f5f9;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2); 
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.score-desc { 
+    font-size: 12px; 
+    color: var(--text-sub); 
+    margin: 0; 
+    font-style: italic;
+}
 </style>
 {% endblock %}
