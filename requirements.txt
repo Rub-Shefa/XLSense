@@ -1,0 +1,24 @@
+# Core
+Django==6.0.2
+python-dotenv==1.2.2
+mysqlclient==2.2.8
+
+# Data Processing
+pandas==2.3.3
+openpyxl==3.1.5
+Pillow==12.1.1
+
+# Testing
+pytest==9.0.2
+pytest-django==4.12.0
+pytest-cov==7.1.0
+factory-boy==3.3.3
+Faker==40.11.1
+
+# E2E Testing
+playwright==1.58.0
+pytest-playwright==0.7.2
+beautifulsoup4==4.14.3
+
+# HTTP
+requests==2.32.3
