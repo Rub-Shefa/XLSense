@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import pandas as pd
@@ -8,9 +9,24 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.models import User
+from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
-from .utils import validate_excel_data, get_formula_recommendations, calculate_quality_score
-from .models import DomainTemplate, ValidationRule, FormulaRule, AuditLog, UploadedFile, ValidationResult
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from .utils import (
+    validate_excel_data,
+    get_formula_recommendations,
+    calculate_quality_score,
+    generate_ai_explanation,
+)
+from .models import (
+    DomainTemplate,
+    ValidationRule,
+    FormulaRule,
+    AuditLog,
+    UploadedFile,
+    ValidationResult,
+)
 from .forms import CustomUserCreationForm
 
 
@@ -37,13 +53,13 @@ def detect_column_types(df):
             continue
 
         try:
-            pd.to_datetime(sample, errors='raise')
+            pd.to_datetime(sample, errors="raise")
             detected_types[column] = "Date"
             continue
         except:
             pass
 
-        numeric_count = pd.to_numeric(sample, errors='coerce').notna().sum()
+        numeric_count = pd.to_numeric(sample, errors="coerce").notna().sum()
         total_count = len(sample)
 
         if numeric_count > 0 and numeric_count < total_count:
@@ -60,11 +76,9 @@ def login_view(request):
         return redirectBasedOnRole(request.user)
 
     if request.method == "POST":
-
         form = AuthenticationForm(request, data=request.POST)
 
         if form.is_valid():
-
             username = form.cleaned_data.get("username")
             password = form.cleaned_data.get("password")
 
@@ -89,17 +103,14 @@ def register_view(request):
         return redirectBasedOnRole(request.user)
 
     if request.method == "POST":
-
         form = CustomUserCreationForm(request.POST)
 
         if form.is_valid():
-
             user = form.save()
             username = form.cleaned_data.get("username")
 
             messages.success(
-                request,
-                f"Account created for {username}! You can now login."
+                request, f"Account created for {username}! You can now login."
             )
 
             return redirect("login")
@@ -139,7 +150,9 @@ def dashboard_view(request):
 @login_required
 def admin_dashboard_view(request):
 
-    logs = AuditLog.objects.select_related('user').all().order_by("-action_timestamp")[:10]
+    logs = (
+        AuditLog.objects.select_related("user").all().order_by("-action_timestamp")[:10]
+    )
 
     domain_count = DomainTemplate.objects.count()
     rule_count = ValidationRule.objects.count()
@@ -167,7 +180,9 @@ def manage_templates_view(request):
         selected_template_id = str(templates.first().id)
 
     if selected_template_id:
-        validation_rules = ValidationRule.objects.filter(template_id=selected_template_id)
+        validation_rules = ValidationRule.objects.filter(
+            template_id=selected_template_id
+        )
         formula_rules = FormulaRule.objects.filter(template_id=selected_template_id)
     else:
         validation_rules = []
@@ -190,9 +205,9 @@ def manage_templates_view(request):
 def upload_file_view(request):
     domains = DomainTemplate.objects.all()
 
-    latest_upload = UploadedFile.objects.filter(
-        user=request.user
-    ).order_by("-upload_time").first()
+    latest_upload = (
+        UploadedFile.objects.filter(user=request.user).order_by("-upload_time").first()
+    )
 
     if request.method == "POST":
         selected_domain = request.POST.get("domain")
@@ -221,10 +236,7 @@ def upload_file_view(request):
                 continue
 
             uploaded_file = UploadedFile.objects.create(
-                user=request.user,
-                template=template,
-                file=file,
-                status="Processing"
+                user=request.user, template=template, file=file, status="Processing"
             )
 
             try:
@@ -252,16 +264,18 @@ def upload_file_view(request):
 
                 validate_excel_data(uploaded_file)
 
-                parsed_files.append({
-                    "file_name": file.name,
-                    "preview_data": preview_data,
-                    "detected_types": detected_types,
-                })
+                parsed_files.append(
+                    {
+                        "file_name": file.name,
+                        "preview_data": preview_data,
+                        "detected_types": detected_types,
+                    }
+                )
 
                 AuditLog.objects.create(
                     user=request.user,
                     action_type="File Upload",
-                    details=f"Successfully uploaded and parsed: {file.name} | Domain: {selected_domain}"
+                    details=f"Successfully uploaded and parsed: {file.name} | Domain: {selected_domain}",
                 )
 
                 success_count += 1
@@ -273,7 +287,7 @@ def upload_file_view(request):
                 AuditLog.objects.create(
                     user=request.user,
                     action_type="Upload Error",
-                    details=f"Failed to process {file.name}: {str(e)}"
+                    details=f"Failed to process {file.name}: {str(e)}",
                 )
 
                 messages.error(request, f"{file.name} failed to process.")
@@ -326,19 +340,19 @@ def validation_report_view(request, file_id):
     # 2. Process the file for dynamic insights
     try:
         file_path = uploaded_file.file.path
-        if file_path.endswith('.csv'):
+        if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
-            
+
         df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
-        
+
         total_rows = len(df)
-        
+
         # Calculate Score & Get Recs
         score = calculate_quality_score(uploaded_file, total_rows)
         recommendations = get_formula_recommendations(uploaded_file, df.columns)
-        
+
     except Exception as e:
         # Fallback if file reading fails
         score = 0
@@ -350,7 +364,44 @@ def validation_report_view(request, file_id):
         "results": results,
         "quality_score": score,
         "recommendations": recommendations,
-        "page_title": "Validation Report"
+        "page_title": "Validation Report",
     }
 
     return render(request, "report.html", context)
+
+
+@csrf_exempt
+@login_required
+@require_POST
+def ai_explain_view(request):
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    result_id = data.get("result_id")
+    if not result_id:
+        return JsonResponse({"error": "result_id is required"}, status=400)
+
+    result = get_object_or_404(ValidationResult, id=result_id)
+    template = result.file.template
+
+    formula = FormulaRule.objects.filter(
+        template=template,
+        target_column__iexact=result.column_name,
+    ).first()
+
+    if formula:
+        explanation = generate_ai_explanation(
+            formula_name=formula.formula_name,
+            target_column=formula.target_column,
+            condition_expression=formula.condition_expression,
+        )
+    else:
+        explanation = generate_ai_explanation(
+            formula_name="Validation Rule",
+            target_column=result.column_name,
+            condition_expression=result.error_details,
+        )
+
+    return JsonResponse({"explanation": explanation})
