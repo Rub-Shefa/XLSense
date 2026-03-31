@@ -10,11 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -79,7 +82,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'xlsense_db',
         'USER': 'root',
-        'PASSWORD': '',  # Keep empty for XAMPP default
+        # Keep PASSWORD empty for XAMPP default
+        'PASSWORD': os.environ.get("DATABASE_PASSWORD", ""),
         'HOST': '127.0.0.1',
         'PORT': '3306',
     }
