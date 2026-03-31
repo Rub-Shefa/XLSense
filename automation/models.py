@@ -21,7 +21,7 @@ class ValidationRule(models.Model):
     column_name = models.CharField(max_length=100)
     condition_expression = models.TextField()
     error_message = models.TextField()
-    security_level = models.CharField(max_length=50, default='Normal')
+    security_level = models.CharField(max_length=50, default="Normal")
 
     def __str__(self):
         return self.rule_name
@@ -43,14 +43,16 @@ class FormulaRule(models.Model):
 class UploadedFile(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     template = models.ForeignKey(DomainTemplate, on_delete=models.SET_NULL, null=True)
-    file = models.FileField(upload_to='uploads/')
+    file = models.FileField(upload_to="uploads/")
     upload_time = models.DateTimeField(auto_now_add=True)
     processed_time = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=50, default='Pending')
+    status = models.CharField(max_length=50, default="Pending")
 
     @property
     def short_name(self):
-        return os.path.basename(self.file.name)
+        if self.file and self.file.name:
+            return os.path.basename(self.file.name)
+        return "Untitled"
 
 
 # 5. The specific results for each row of the Excel file
@@ -62,7 +64,11 @@ class ValidationResult(models.Model):
     is_valid = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"Result for {self.file.file.name} - Row {self.row_index}"
+        try:
+            name = self.file.file.name
+        except Exception:
+            name = "Unknown"
+        return f"Result for {name} - Row {self.row_index}"
 
 
 # 6. Tracking who did what

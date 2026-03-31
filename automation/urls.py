@@ -18,5 +18,9 @@ urlpatterns = [
     # History
     path("history/", views.upload_history_view, name="upload_history"),
     # Report
-    path("report/<int:file_id>/", views.validation_report_view, name="validation_report"),
+    path(
+        "report/<int:file_id>/", views.validation_report_view, name="validation_report"
+    ),
+    # AI Explain
+    path("ai-explain/", views.ai_explain_view, name="ai_explain"),
 ]
