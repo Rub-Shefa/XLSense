@@ -3,9 +3,9 @@ import json
 import os
 import pandas as pd
 import requests
+import re 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from .models import ValidationRule, ValidationResult, FormulaRule
 
 
 def find_best_column(rule_name, excel_columns):
@@ -208,13 +208,50 @@ def generate_ai_explanation(
         except Exception as e:
             print(f"AI API call failed: {e}")
 
-    context_summary = ""
-    if context_data:
-        context_summary = "Sample data: " + ", ".join(
-            f"{k} = {v}" for k, v in context_data.items()
+    # --- YOUR INTELLIGENT FALLBACK LOGIC ---
+    
+    # 1. Detect if it's a Grading Math Error
+    if "Math Error" in condition_expression:
+        explanation = (
+            f"**Logic Mismatch Detected:** The value in `{target_column}` doesn't align with the "
+            f"calculated results for `{formula_name}`. The system expects a value based on the "
+            "faculty grading scale, but found a manual discrepancy."
+        )
+    
+    # 2. Detect Boundary/Attendance Errors
+    import re
+
+def generate_ai_explanation(formula_name, target_column, condition_expression, context_data=None):
+    # ... (Keep Farshid's API code at the top) ...
+
+    # --- YOUR NEW DYNAMIC FALLBACK ---
+    if any(x in condition_expression.lower() for x in ["exceed", "between", "limit", "<=", ">="]):
+        
+        # Look for numbers in the actual validation rule (e.g., "x <= 20")
+        numbers = re.findall(r"\d+", condition_expression)
+        
+        if numbers:
+            # If the rule has two numbers (0 and 20), pick the larger one as the max
+            max_val = max(map(int, numbers))
+            min_val = min(map(int, numbers)) if len(numbers) > 1 else 0
+            
+            explanation = (
+                f"**Boundary Violation:** The entry for `{target_column}` is invalid. "
+                f"Based on the **Database Validation Rule** for this template, the value "
+                f"must be between **{min_val} and {max_val}**."
+            )
+        else:
+            explanation = f"**Boundary Violation:** The value in `{target_column}` exceeds the allowed limit."
+            
+
+    # 3. Default Professional Sentence
+    else:
+        explanation = (
+            f"**System Validation:** The `{target_column}` field failed the `{formula_name}` "
+            f"verification. Logic checked: *{condition_expression}*."
         )
 
-    return (
-        f"The formula '{formula_name}' calculates '{target_column}' using: "
-        f"{condition_expression}. {context_summary}"
-    ).strip()
+    if context_data:
+        explanation += f"\n\n**Context Found:** " + ", ".join(f"`{k}={v}`" for k, v in context_data.items())
+
+    return explanation.strip()

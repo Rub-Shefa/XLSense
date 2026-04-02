@@ -55,7 +55,6 @@ class UploadedFile(models.Model):
         return "Untitled"
 
 
-# 5. The specific results for each row of the Excel file
 class ValidationResult(models.Model):
     file = models.ForeignKey(UploadedFile, on_delete=models.CASCADE)
     row_index = models.IntegerField()
@@ -69,6 +68,22 @@ class ValidationResult(models.Model):
         except Exception:
             name = "Unknown"
         return f"Result for {name} - Row {self.row_index}"
+
+    @property
+    def ai_insight(self):
+        """
+        A property that provides the professional AI explanation
+        directly from the model instance.
+        """
+        # We import here to avoid circular dependency with views/utils
+        from .utils import generate_ai_explanation 
+        
+        # We reuse your new professional logic
+        return generate_ai_explanation(
+            formula_name="Validation Rule",
+            target_column=self.column_name,
+            condition_expression=self.error_details
+        )
 
 
 # 6. Tracking who did what

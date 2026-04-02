@@ -479,6 +479,29 @@
     color: #1e3a8a;
     border: 1px solid #bfdbfe;
 }
+
+.ai-explanation-box {
+    /* Adding a subtle gradient makes it look more 'intelligent' */
+    background: linear-gradient(to right, #f8fafc, #f1f5f9) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.ai-explanation-box::before {
+    content: "✨ INTELLIGENT AUDITOR ANALYSIS";
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    color: #3b82f6;
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+}
+
+/* Make sure the text color is readable */
+.ai-explanation-box {
+    color: #334155 !important;
+    line-height: 1.6 !important;
+}
+
 .ai-loading {
     display: flex;
     align-items: center;
@@ -564,7 +587,17 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(data) {
                 loadingEl.style.display = 'none';
                 contentEl.style.display = 'block';
-                contentEl.innerHTML = '<strong>AI Explanation:</strong> ' + markdownToHtml(data.explanation);
+                contentEl.innerHTML = `
+    <div class="ai-insight-container">
+        <div class="ai-insight-header">
+            <span class="sparkle-icon">✨</span>
+            <strong>Intelligent Auditor Analysis</strong>
+        </div>
+        <div class="ai-insight-body">
+            ${markdownToHtml(data.explanation)}
+        </div>
+    </div>
+`;
                 btn.disabled = false;
             })
             .catch(function() {
