@@ -41,7 +41,7 @@ def redirectBasedOnRole(user):
     return redirect("dashboard")
 
 
-# ✅ FINAL DETECTION FUNCTION
+
 def detect_column_types(df):
     detected_types = {}
 
@@ -294,10 +294,12 @@ def upload_file_view(request):
 
                     parsed_files.append(    
                         {
+                        "id": uploaded_file.id,
                         "file_name": file.name,
-                        "preview_data": [],
+                        "preview_data": None,
                         "columns": [],
-                        "detected_types": {},
+                        "detected_types": None,
+                        
                         }
                     )
 
@@ -470,15 +472,20 @@ def download_excel_view(request, file_id):
     else:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
 
-    file_path = uploaded_file.file.path
+    file_path = uploaded_file.file.path.lower()
+
+
+    if file_path.endswith(".pdf") or file_path.endswith(".txt"):
+        return HttpResponse(
+            "Download not available for this file type.",
+            content_type="text/plain"
+        )
+
 
     if file_path.endswith(".csv"):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
-
-    df = preprocess_dataframe(df)
-    df = remove_empty_unnamed_columns(df)
 
     # ===== APPLY FIXES LATER HERE =====
 
@@ -496,3 +503,36 @@ def download_excel_view(request, file_id):
     response["Content-Disposition"] = f'attachment; filename="{filename}_processed.xlsx"'
 
     return response
+
+@login_required
+def preview_excel_view(request, file_id):
+    if request.user.is_staff:
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id)
+    else:
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+
+    file_path = uploaded_file.file.path
+
+    if file_path.endswith(".csv"):
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_excel(file_path)
+
+    df = preprocess_dataframe(df)
+    df = remove_empty_unnamed_columns(df)
+
+    
+    df.columns = [str(col).replace("_", " ").title() for col in df.columns]
+
+    # auto width simulation (important)
+    df = df.astype(str)
+
+    # convert to styled HTML
+    table_html = df.to_html(
+        classes="excel-table",
+        index=False,
+        border=0,
+        justify="center"
+    )
+
+    return JsonResponse({"table": table_html})

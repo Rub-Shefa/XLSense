@@ -27,4 +27,5 @@ urlpatterns = [
 ]
 urlpatterns += [
     path('download/<int:file_id>/', download_excel_view, name='download_excel'),
+    path("preview/<int:file_id>/", views.preview_excel_view, name="preview_excel"),
 ]

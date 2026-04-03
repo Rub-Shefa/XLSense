@@ -69,6 +69,54 @@
 table tr:hover{
     background-color:#f9fbff;
 }
+
+/* ===== EXCEL LOOK (FINAL) ===== */
+
+#previewContent {
+    overflow: auto;
+    max-height: 80vh;
+    border: 1px solid #d0d7de;
+}
+
+/* Main table */
+.excel-table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+    font-family: Calibri, Arial;
+    font-size: 14px;
+}
+
+/* Header */
+.excel-table th {
+    background: #f8fafc;
+    font-weight: 700;
+    border: 1px solid #d0d7de;
+    padding: 10px 16px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    white-space: nowrap;
+}
+
+/* Cells */
+.excel-table td {
+    border: 1px solid #e5e7eb;
+    padding: 8px 16px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Alternate rows */
+.excel-table tr:nth-child(even) td {
+    background-color: #fafafa;
+}
+
+/* Hover effect */
+.excel-table tr:hover td {
+    background-color: #eef5ff;
+}
 </style>
 
 <h2>Upload Excel or CSV File</h2>
@@ -107,7 +155,36 @@ Upload File
 
 </form>
 
+<!-- ✅ PROGRESS BAR -->
+<div id="progressContainer" style="margin-top:20px; display:none;">
+    <div style="width:100%; background:#e5e7eb; border-radius:8px; overflow:hidden;">
+        <div id="progressBar" style="width:0%; padding:6px; background:linear-gradient(90deg,#667eea,#764ba2); color:white; text-align:center; font-size:12px;">
+            0%
+        </div>
+    </div>
+    <p id="statusText" style="margin-top:8px; font-weight:500;"></p>
+</div>
+
 <hr>
+
+{% if latest_upload %}
+<div style="margin-top:20px; padding:15px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; max-width:600px;">
+    <h3 style="margin-bottom:10px;">Latest Upload</h3>
+    <p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
+    <p>
+        <strong>Status:</strong> 
+        {% if latest_upload.status == "Completed" %}
+            <span style="color:green; font-weight:600;">Completed ✓</span>
+        {% elif latest_upload.status == "Processing" %}
+            <span style="color:#f59e0b; font-weight:600;">Processing...</span>
+        {% elif latest_upload.status == "Failed" %}
+            <span style="color:red; font-weight:600;">Failed ✖</span>
+        {% else %}
+            {{ latest_upload.status }}
+        {% endif %}
+    </p>
+</div>
+{% endif %}
 
 {% if parsed_files %}
 {% for item in parsed_files %}
@@ -136,18 +213,14 @@ Upload File
 </tbody>
 </table>
 </div>
-{% else %}
-<p style="color:#64748b; font-style:italic;">
-Column detection not available for this file type.
-</p>
 {% endif %}
 
 <h4 style="margin-top:25px;">Spreadsheet Preview</h4>
 
 {% if item.preview_data %}
+
 <div class="table-wrap">
 <table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
-
 <thead>
 <tr style="background:linear-gradient(90deg,#f8fbff,#eef5fb);">
 {% for key in item.columns %}
@@ -165,22 +238,58 @@ Column detection not available for this file type.
 </tr>
 {% endfor %}
 </tbody>
-
 </table>
 </div>
+
 {% else %}
+
 <p style="color:#64748b; font-style:italic;">
-Preview not available for this file type.
+    Preview not available for this file type
 </p>
+
 {% endif %}
 
-<a href="{% url 'download_excel' forloop.counter0 %}" class="primary-btn">
-Download {{ item.file_name|cut:"uploads/" }}
+
+
+<div style="margin-top:15px; display:flex; gap:10px;">
+
+{% if item.id %}
+<button onclick="openPreview('{{ item.id }}')" class="primary-btn">
+Excel Preview
+</button>
+
+<a href="{% url 'download_excel' item.id %}" class="primary-btn">
+Download
 </a>
+{% else %}
+<button class="primary-btn" style="opacity:0.6; cursor:not-allowed;">
+Excel Preview
+</button>
+
+<button class="primary-btn" style="opacity:0.6; cursor:not-allowed;">
+Download
+</button>
+{% endif %}
 
 </div>
+
+</div>
+
 {% endfor %}
 {% endif %}
+
+<!-- ✅ MODAL -->
+<div id="previewModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999;">
+    <div style="width:95%; height:90%; margin:2% auto; background:white; border-radius:10px; overflow:auto; position:relative; padding:20px;">
+        <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+            <button onclick="closePreview()" 
+            style="background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:6px;">
+            ✕ Close
+            </button>
+        </div>
+        <div id="previewContent" style="width:100%; height:100%; overflow:auto;"></div>
+    </div>
+</div>
 
 <script>
 const fileInput = document.getElementById("fileInput");
@@ -201,30 +310,24 @@ chooseBtn.addEventListener("click", function(){
 
 fileInput.addEventListener("change", function(){
     const newFiles = Array.from(fileInput.files);
-
     newFiles.forEach(file => {
         if (!selectedFiles.some(f => f.name === file.name)) {
             selectedFiles.push(file);
         }
     });
-
     updateFileList();
 });
 
 function updateFileList(){
     fileList.innerHTML="";
-
     selectedFiles.forEach((file,index)=>{
         const tag=document.createElement("div");
         tag.className = "file-tag";
-
         tag.innerHTML=`${file.name} <span style="color:red;cursor:pointer;">✖</span>`;
-
         tag.querySelector("span").onclick=function(){
             selectedFiles.splice(index,1);
             updateFileList();
         };
-
         fileList.appendChild(tag);
     });
 
@@ -235,11 +338,58 @@ function updateFileList(){
 document.getElementById("uploadForm").addEventListener("submit", function(e){
     e.preventDefault();
 
-    const dataTransfer = new DataTransfer();
-    selectedFiles.forEach(file => dataTransfer.items.add(file));
-    fileInput.files = dataTransfer.files;
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const statusText = document.getElementById("statusText");
 
-    this.submit();
+    progressContainer.style.display = "block";
+
+    let progress = 0;
+
+    const interval = setInterval(() => {
+        progress += 10;
+
+        progressBar.style.width = progress + "%";
+        progressBar.innerText = progress + "%";
+
+        if(progress === 30) statusText.innerText = "Uploading...";
+        if(progress === 70) statusText.innerText = "Processing...";
+
+        if(progress >= 100){
+            clearInterval(interval);
+            statusText.innerText = "Completed ✓";
+
+            setTimeout(() => {
+                const dataTransfer = new DataTransfer();
+                selectedFiles.forEach(file => dataTransfer.items.add(file));
+                fileInput.files = dataTransfer.files;
+                e.target.submit();
+            }, 500);
+        }
+
+    }, 200);
+});
+
+/* EXCEL PREVIEW */
+function openPreview(id){
+    fetch(`/preview/${id}/`)
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("previewModal").style.display = "block";
+        document.getElementById("previewContent").innerHTML = data.table;
+    });
+}
+
+function closePreview(){
+    document.getElementById("previewModal").style.display = "none";
+    document.getElementById("previewContent").innerHTML = "";
+}
+/* Excel-like cell click highlight */
+document.addEventListener("click", function(e){
+    if(e.target.tagName === "TD"){
+        document.querySelectorAll(".excel-table td").forEach(td => td.style.background="");
+        e.target.style.background = "#cfe3ff";
+    }
 });
 </script>
 
