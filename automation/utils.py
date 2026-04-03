@@ -3,9 +3,10 @@ import json
 import os
 import pandas as pd
 import requests
-import re 
+import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
+
 
 def find_best_column(rule_name, excel_columns):
     rule_clean = str(rule_name).strip().lower().replace(" ", "")
@@ -29,6 +30,7 @@ def find_best_column(rule_name, excel_columns):
         if rule_clean in clean_name or clean_name in rule_clean:
             return original_name
     return None
+
 
 def validate_excel_data(uploaded_file_obj):
     # FIX: Added local imports to stop the "Undefined Variable" errors
@@ -116,10 +118,11 @@ def validate_excel_data(uploaded_file_obj):
                     continue
     return True
 
+
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     # FIX: Added local import
     from .models import FormulaRule
-    
+
     template = uploaded_file_obj.template
     all_formula_rules = FormulaRule.objects.filter(template=template)
 
@@ -136,10 +139,11 @@ def get_formula_recommendations(uploaded_file_obj, df_columns):
             )
     return recommendations
 
+
 def calculate_quality_score(uploaded_file_obj, total_rows):
     # FIX: Added local import
     from .models import ValidationResult
-    
+
     error_rows_count = (
         ValidationResult.objects.filter(file=uploaded_file_obj, is_valid=False)
         .values("row_index")
@@ -154,17 +158,58 @@ def calculate_quality_score(uploaded_file_obj, total_rows):
     score = (success_rows / total_rows) * 100
     return round(score, 2)
 
-def generate_ai_explanation(formula_name, target_column, condition_expression, context_data=None):
-    # This function uses logic to explain the error context
-    
+
+def generate_ai_explanation(
+    formula_name, target_column, condition_expression, context_data=None
+):
+    # Try AI API call first
+    ai_api_key = os.environ.get("AI_API_KEY")
+    ai_api_url = os.environ.get(
+        "AI_API_URL", "https://api.openai.com/v1/chat/completions"
+    )
+    ai_model = os.environ.get("AI_MODEL", "gpt-3.5-turbo")
+
+    if ai_api_key:
+        try:
+            prompt = (
+                f"Explain this validation error in simple terms:\n"
+                f"Rule: {formula_name}\n"
+                f"Column: {target_column}\n"
+                f"Condition: {condition_expression}"
+            )
+            if context_data:
+                prompt += f"\nContext: {context_data}"
+
+            response = requests.post(
+                ai_api_url,
+                headers={
+                    "Authorization": f"Bearer {ai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": ai_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 200,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip(), True
+        except Exception as e:
+            print(f"AI API call failed: {e}")
+
+    # Fallback: rule-based explanation
     if "Math Error" in condition_expression:
-        return (
+        explanation = (
             f"**Logic Mismatch Detected:** The value in `{target_column}` doesn't align with the "
             f"calculated results for `{formula_name}`. The system found a manual discrepancy "
             "against the standard formula."
         )
-
-    if any(x in condition_expression.lower() for x in ["exceed", "between", "limit", "<=", ">="]):
+    elif any(
+        x in condition_expression.lower()
+        for x in ["exceed", "between", "limit", "<=", ">="]
+    ):
         numbers = re.findall(r"\d+", condition_expression)
         if numbers:
             max_val = max(map(int, numbers))
@@ -182,6 +227,8 @@ def generate_ai_explanation(formula_name, target_column, condition_expression, c
         )
 
     if context_data:
-        explanation += f"\n\n**Context Found:** " + ", ".join(f"`{k}={v}`" for k, v in context_data.items())
+        explanation += f"\n\n**Context Found:** " + ", ".join(
+            f"`{k}={v}`" for k, v in context_data.items()
+        )
 
-    return explanation.strip()
+    return explanation.strip(), False

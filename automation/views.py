@@ -393,16 +393,19 @@ def ai_explain_view(request):
     ).first()
 
     if formula:
-        explanation = generate_ai_explanation(
+        explanation, ai_success = generate_ai_explanation(
             formula_name=formula.formula_name,
             target_column=formula.target_column,
             condition_expression=formula.condition_expression,
         )
     else:
-        explanation = generate_ai_explanation(
+        explanation, ai_success = generate_ai_explanation(
             formula_name="Validation Rule",
             target_column=result.column_name,
             condition_expression=result.error_details,
         )
 
-    return JsonResponse({"explanation": explanation})
+    status_code = 200 if ai_success else 503
+    return JsonResponse(
+        {"explanation": explanation, "ai_used": ai_success}, status=status_code
+    )
