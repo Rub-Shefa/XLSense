@@ -405,7 +405,4 @@ def ai_explain_view(request):
             condition_expression=result.error_details,
         )
 
-    status_code = 200 if ai_success else 503
-    return JsonResponse(
-        {"explanation": explanation, "ai_used": ai_success}, status=status_code
-    )
+    return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)

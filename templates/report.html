@@ -502,6 +502,35 @@
     line-height: 1.6 !important;
 }
 
+.ai-explanation-box h2,
+.ai-explanation-box h3,
+.ai-explanation-box h4 {
+    margin: 0 0 8px 0;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.ai-explanation-box h2 { font-size: 16px; }
+.ai-explanation-box h3 { font-size: 14px; }
+.ai-explanation-box h4 { font-size: 13px; }
+
+.ai-explanation-box p {
+    margin: 0 0 8px 0;
+}
+
+.ai-explanation-box p:last-child {
+    margin-bottom: 0;
+}
+
+.ai-explanation-box ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.ai-explanation-box li {
+    margin-bottom: 4px;
+}
+
 .ai-loading {
     display: flex;
     align-items: center;
@@ -534,11 +563,39 @@ function markdownToHtml(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+    // Bold italic, bold, italic
     html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Inline code
     html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-    html = html.replace(/\n/g, '<br>');
+
+    // Unordered lists
+    html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+    // Numbered lists
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+    // Double newlines = paragraph breaks
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = '<p>' + html + '</p>';
+    html = html.replace(/<p><\/p>/g, '');
+    html = html.replace(/<p>(<h[234]>)/g, '$1');
+    html = html.replace(/(<\/h[234]>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<ul>)/g, '$1');
+    html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+
+    // Single newlines = line breaks (but not inside block elements)
+    html = html.replace(/(?<!<\/li>)(?<!<\/ul>)(?<!<\/h[234]>)\n(?!<)/g, '<br>');
+
     return html;
 }
 
@@ -587,12 +644,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(data) {
                 loadingEl.style.display = 'none';
                 contentEl.style.display = 'block';
+                var headerHtml = data.ai_used
+                    ? '<div class="ai-insight-header"><span class="sparkle-icon">✨</span><strong>Intelligent Auditor Analysis</strong></div>'
+                    : '<div class="ai-insight-header"><strong>Rule-Based Analysis</strong></div>';
                 contentEl.innerHTML = `
     <div class="ai-insight-container">
-        <div class="ai-insight-header">
-            <span class="sparkle-icon">✨</span>
-            <strong>Intelligent Auditor Analysis</strong>
-        </div>
+        ${headerHtml}
         <div class="ai-insight-body">
             ${markdownToHtml(data.explanation)}
         </div>

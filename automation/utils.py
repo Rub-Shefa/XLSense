@@ -172,7 +172,7 @@ def generate_ai_explanation(
     if ai_api_key:
         try:
             prompt = (
-                f"Explain this validation error in simple terms:\n"
+                f"You are a data analyst explaining spreadsheet formulas in simple, clear terms. Be concise and use bullet points for different aspects. Now, explain this validation error in simple terms, do not write anything extra things, just write the explanation starting with 'Explanation of that validation error: ':\n"
                 f"Rule: {formula_name}\n"
                 f"Column: {target_column}\n"
                 f"Condition: {condition_expression}"
