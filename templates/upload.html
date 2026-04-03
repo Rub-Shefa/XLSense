@@ -14,7 +14,6 @@
     box-shadow:0 2px 6px rgba(0,0,0,0.06);
     outline:none;
     cursor:pointer;
-    transition:0.3s;
 }
 
 .primary-btn{
@@ -25,6 +24,8 @@
     border-radius:8px;
     font-weight:600;
     cursor:pointer;
+    text-decoration:none;   
+    display:inline-block;  
 }
 
 .upload-btn-disabled{
@@ -58,25 +59,24 @@
 .preview-card{
     margin-top:30px;
     padding:20px;
-    background:#ffffff;
+    background:#fdfefe;
     border-radius:12px;
     box-shadow:0 2px 8px rgba(0,0,0,0.08);
     width:100%;
     max-width:calc(100vw - 360px);
     overflow:hidden;
-    box-sizing:border-box;
 }
 
 .table-wrap{
     width:100%;
-    max-width:100%;
     overflow-x:auto;
-    overflow-y:hidden;
     border:1px solid #d0d7de;
     border-radius:10px;
     margin-top:10px;
-    display:block;
-    box-sizing:border-box;
+}
+
+table tr:hover{
+    background-color:#f9fbff;
 }
 </style>
 
@@ -116,84 +116,45 @@ Upload File
 
 </form>
 
-<div id="processingBox" style="display:none; margin-top:20px; width:50%;">
-<strong id="statusText">Uploading...</strong>
-
-<div style="width:100%; background-color:#e9ecef; border-radius:8px; margin-top:10px;">
-<div id="progressBar" style="width:0%; height:20px; background:linear-gradient(90deg,#667eea,#764ba2); border-radius:8px; transition: width 0.2s;"></div>
-</div>
-</div>
-
 <hr>
-
-{% if latest_upload %}
-<div class="card-box">
-
-<h4 style="margin-bottom:15px;color:#3a5f84;">Latest Upload</h4>
-
-<p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
-
-<p>
-<strong>Status:</strong>
-
-{% if latest_upload.status == "Completed" %}
-<span style="color:green;">Completed ✓</span>
-
-{% elif latest_upload.status == "Processing" %}
-<span style="color:orange;">Processing...</span>
-
-{% elif latest_upload.status == "Failed" %}
-<span style="color:red;">Failed</span>
-
-{% endif %}
-</p>
-
-</div>
-{% endif %}
 
 {% if parsed_files %}
 {% for item in parsed_files %}
-
 <div class="preview-card">
 
-<h3 style="color:#3a5f84;">{{ item.file_name|cut:"uploads/" }}</h3>
+<h3>{{ item.file_name|cut:"uploads/" }}</h3>
 
 <h4>Detected Column Types</h4>
 
 <div class="table-wrap">
 <table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
-
 <thead>
-<tr style="background:#eef5fb;">
-<th style="padding:12px;text-align:center;">Column</th>
-<th style="padding:12px;text-align:center;">Detected Type</th>
+<tr style="background:linear-gradient(90deg,#f8fbff,#eef5fb);">
+<th style="padding:14px;">Column</th>
+<th style="padding:14px;">Detected Type</th>
 </tr>
 </thead>
 
 <tbody>
 {% for column, dtype in item.detected_types.items %}
 <tr>
-<td style="padding:12px; border:1px solid #ddd; text-align:center; vertical-align:middle;">{{ column }}</td>
-<td style="padding:12px; border:1px solid #ddd; text-align:center; vertical-align:middle;">{{ dtype }}</td>
+<td style="padding:12px;border:1px solid #ddd;text-align:center;">{{ column }}</td>
+<td style="padding:12px;border:1px solid #ddd;text-align:center;">{{ dtype }}</td>
 </tr>
 {% endfor %}
 </tbody>
-
 </table>
 </div>
 
 <h4 style="margin-top:25px;">Spreadsheet Preview</h4>
 
 <div class="table-wrap">
-
 <table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
 
 <thead>
-<tr style="background:#eef5fb;">
-{% for key in item.preview_data.0.keys %}
-<th style="padding:12px 14px;border-bottom:2px solid #d0d7de;border-right:1px solid #e5e7eb;text-align:left;font-weight:600;white-space:nowrap;">
-{{ key }}
-</th>
+<tr style="background:linear-gradient(90deg,#f8fbff,#eef5fb);">
+{% for key in item.columns %}
+<th style="padding:14px 16px;font-weight:600;">{{ key }}</th>
 {% endfor %}
 </tr>
 </thead>
@@ -201,10 +162,8 @@ Upload File
 <tbody>
 {% for row in item.preview_data %}
 <tr>
-{% for value in row.values %}
-<td style="padding:10px 14px;border-bottom:1px solid #eef1f4;border-right:1px solid #eef1f4;text-align:left;vertical-align:middle;white-space:nowrap;">
-{{ value }}
-</td>
+{% for value in row %}
+<td style="padding:12px 16px;border-bottom:1px solid #eef1f4;">{{ value }}</td>
 {% endfor %}
 </tr>
 {% endfor %}
@@ -212,6 +171,12 @@ Upload File
 
 </table>
 </div>
+
+<!-- ✅ 🔥 DOWNLOAD BUTTON PER FILE -->
+<a href="{% url 'download_excel' forloop.counter0 %}" class="primary-btn">
+Download {{ item.file_name|cut:"uploads/" }}
+</a>
+
 </div>
 {% endfor %}
 {% endif %}
@@ -222,11 +187,6 @@ const chooseBtn = document.getElementById("chooseBtn");
 const uploadBtn = document.getElementById("uploadBtn");
 const fileList = document.getElementById("fileList");
 const domainSelect = document.getElementById("domainSelect");
-
-const form = document.getElementById("uploadForm");
-const processingBox = document.getElementById("processingBox");
-const progressBar = document.getElementById("progressBar");
-const statusText = document.getElementById("statusText");
 
 let selectedFiles = [];
 
@@ -239,39 +199,15 @@ chooseBtn.addEventListener("click", function(){
 });
 
 fileInput.addEventListener("change", function(){
-    for (let i = 0; i < fileInput.files.length; i++) {
-        const exists = selectedFiles.some(f => f.name === fileInput.files[i].name);
-        if (!exists) {
-            selectedFiles.push(fileInput.files[i]);
+    const newFiles = Array.from(fileInput.files);
+
+    newFiles.forEach(file => {
+        if (!selectedFiles.some(f => f.name === file.name)) {
+            selectedFiles.push(file);
         }
-    }
+    });
+
     updateFileList();
-});
-
-domainSelect.addEventListener("change", function(){
-    updateUploadButton();
-});
-
-domainSelect.addEventListener("mouseover", function(){
-    domainSelect.style.borderColor = "#667eea";
-    domainSelect.style.boxShadow = "0 0 8px rgba(102,126,234,0.25)";
-});
-
-domainSelect.addEventListener("mouseout", function(){
-    if(document.activeElement !== domainSelect){
-        domainSelect.style.borderColor = "#cbd5e1";
-        domainSelect.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
-    }
-});
-
-domainSelect.addEventListener("focus", function(){
-    domainSelect.style.borderColor = "#667eea";
-    domainSelect.style.boxShadow = "0 0 6px rgba(102,126,234,0.35)";
-});
-
-domainSelect.addEventListener("blur", function(){
-    domainSelect.style.borderColor = "#cbd5e1";
-    domainSelect.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
 });
 
 function updateFileList(){
@@ -281,7 +217,7 @@ function updateFileList(){
         const tag=document.createElement("div");
         tag.className = "file-tag";
 
-        tag.innerHTML=`${file.name} <span style="color:red;cursor:pointer;font-weight:bold;">✖</span>`;
+        tag.innerHTML=`${file.name} <span style="color:red;cursor:pointer;">✖</span>`;
 
         tag.querySelector("span").onclick=function(){
             selectedFiles.splice(index,1);
@@ -291,53 +227,18 @@ function updateFileList(){
         fileList.appendChild(tag);
     });
 
-    updateUploadButton();
+    uploadBtn.disabled = !(selectedFiles.length > 0 && domainSelect.value !== "");
+    uploadBtn.className = uploadBtn.disabled ? "upload-btn-disabled" : "primary-btn";
 }
 
-function updateUploadButton(){
-    if(selectedFiles.length > 0 && domainSelect.value !== ""){
-        uploadBtn.disabled = false;
-        uploadBtn.className = "primary-btn";
-    } else {
-        uploadBtn.disabled = true;
-        uploadBtn.className = "upload-btn-disabled";
-    }
-}
-
-form.addEventListener("submit", function(e){
+document.getElementById("uploadForm").addEventListener("submit", function(e){
     e.preventDefault();
 
-    processingBox.style.display = "block";
-    uploadBtn.disabled = true;
+    const dataTransfer = new DataTransfer();
+    selectedFiles.forEach(file => dataTransfer.items.add(file));
+    fileInput.files = dataTransfer.files;
 
-    let progress = 0;
-
-    let interval = setInterval(function(){
-
-        if(progress < 50){
-            progress += 5;
-            statusText.innerText = "Uploading...";
-        }
-        else if(progress < 90){
-            progress += 2;
-            statusText.innerText = "Processing...";
-        }
-        else if(progress < 100){
-            progress += 1;
-        }
-
-        progressBar.style.width = progress + "%";
-
-        if(progress >= 100){
-            clearInterval(interval);
-            statusText.innerText = "Completed ✓";
-
-            setTimeout(function(){
-                form.submit();
-            }, 300);
-        }
-
-    }, 120);
+    this.submit();
 });
 </script>
 

@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from .views import download_excel_view
 
 urlpatterns = [
     # Authentication
@@ -23,4 +24,7 @@ urlpatterns = [
     ),
     # AI Explain
     path("ai-explain/", views.ai_explain_view, name="ai_explain"),
+]
+urlpatterns += [
+    path('download/<int:file_id>/', download_excel_view, name='download_excel'),
 ]

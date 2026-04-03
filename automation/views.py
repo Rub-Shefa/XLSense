@@ -29,6 +29,8 @@ from .models import (
     ValidationResult,
 )
 from .forms import CustomUserCreationForm
+from django.http import HttpResponse
+from io import BytesIO
 
 
 def is_admin(user):
@@ -39,6 +41,7 @@ def redirectBasedOnRole(user):
     return redirect("dashboard")
 
 
+# ✅ FINAL DETECTION FUNCTION
 def detect_column_types(df):
     detected_types = {}
 
@@ -49,26 +52,59 @@ def detect_column_types(df):
             detected_types[column] = "Empty"
             continue
 
-        if pd.api.types.is_numeric_dtype(sample):
+        total = len(sample)
+
+        numeric_converted = pd.to_numeric(sample, errors="coerce")
+        numeric_ratio = numeric_converted.notna().sum() / total
+
+        if numeric_ratio > 0.8:
             detected_types[column] = "Numeric"
             continue
 
-        try:
-            pd.to_datetime(sample, errors="raise")
+        date_converted = pd.to_datetime(sample, errors="coerce", dayfirst=True)
+        date_ratio = date_converted.notna().sum() / total
+
+        if date_ratio > 0.7:
             detected_types[column] = "Date"
-            continue
-        except:
-            pass
-
-        numeric_count = pd.to_numeric(sample, errors="coerce").notna().sum()
-        total_count = len(sample)
-
-        if numeric_count > 0 and numeric_count < total_count:
+        elif numeric_ratio > 0.2:
             detected_types[column] = "Mixed"
         else:
             detected_types[column] = "Text"
 
     return detected_types
+
+
+# ✅ SMART PREPROCESSING
+def preprocess_dataframe(df):
+    # clean column names
+    df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
+
+    # replace empty strings with NaN
+    df.replace(r"^\s*$", pd.NA, regex=True, inplace=True)
+
+    # trim values
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].astype(str).str.strip()
+            df[col] = df[col].replace("nan", pd.NA)
+
+    # remove fully empty rows
+    df = df.dropna(how="all")
+
+    # remove rows with only 1 value
+    df = df[df.count(axis=1) > 1]
+
+    df = df.reset_index(drop=True)
+
+    return df
+
+
+# ✅ SAFE unnamed column remover (ONLY if empty)
+def remove_empty_unnamed_columns(df):
+    return df.loc[:, ~(
+        df.columns.astype(str).str.lower().str.contains("unnamed") &
+        (df.isna().sum() == len(df))
+    )]
 
 
 def login_view(request):
@@ -211,6 +247,8 @@ def upload_file_view(request):
     )
 
     if request.method == "POST":
+        request.session.pop("parsed_files", None)
+
         selected_domain = request.POST.get("domain")
         files = request.FILES.getlist("file")
 
@@ -248,15 +286,17 @@ def upload_file_view(request):
                 else:
                     df = pd.read_excel(file)
 
-                df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
+                df = preprocess_dataframe(df)
+                df = remove_empty_unnamed_columns(df)
 
                 if df.empty:
                     uploaded_file.status = "Failed"
                     uploaded_file.save()
-                    messages.error(request, f"{file.name} is empty.")
+                    messages.error(request, f"{file.name} has no valid data.")
                     continue
 
-                preview_data = df.fillna("").to_dict(orient="records")
+                preview_data = df.fillna("").values.tolist()
+                columns = list(df.columns)
                 detected_types = detect_column_types(df)
 
                 uploaded_file.status = "Completed"
@@ -267,9 +307,12 @@ def upload_file_view(request):
 
                 parsed_files.append(
                     {
+                        "id": uploaded_file.id,
                         "file_name": file.name,
                         "preview_data": preview_data,
+                        "columns": columns,
                         "detected_types": detected_types,
+                         
                     }
                 )
 
@@ -329,16 +372,13 @@ def upload_history_view(request):
 
 @login_required
 def validation_report_view(request, file_id):
-    # Use get_object_or_404 to prevent 500 errors if the ID is wrong
     if request.user.is_staff:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
 
-    # 1. Get existing validation errors
     results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
 
-    # 2. Process the file for dynamic insights
     try:
         file_path = uploaded_file.file.path
         if file_path.endswith(".csv"):
@@ -346,16 +386,14 @@ def validation_report_view(request, file_id):
         else:
             df = pd.read_excel(file_path)
 
-        df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
+        df = remove_empty_unnamed_columns(df)
 
         total_rows = len(df)
 
-        # Calculate Score & Get Recs
         score = calculate_quality_score(uploaded_file, total_rows)
         recommendations = get_formula_recommendations(uploaded_file, df.columns)
 
     except Exception as e:
-        # Fallback if file reading fails
         score = 0
         recommendations = []
         print(f"Error processing file for report: {e}")
@@ -406,3 +444,38 @@ def ai_explain_view(request):
         )
 
     return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
+
+
+@login_required
+def download_excel_view(request, file_id):
+    if request.user.is_staff:
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id)
+    else:
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+
+    file_path = uploaded_file.file.path
+
+    if file_path.endswith(".csv"):
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_excel(file_path)
+
+    df = preprocess_dataframe(df)
+    df = remove_empty_unnamed_columns(df)
+
+    # ===== APPLY FIXES LATER HERE =====
+
+    from io import BytesIO
+    output = BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    response = HttpResponse(
+        output,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    filename = uploaded_file.file.name.split("/")[-1].replace(".csv", "").replace(".xlsx", "")
+    response["Content-Disposition"] = f'attachment; filename="{filename}_processed.xlsx"'
+
+    return response

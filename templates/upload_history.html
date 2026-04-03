@@ -54,7 +54,9 @@
                     </td>
                     <td class="text-center">
                         <div class="actions-flex">
-                            {% if file.file %}<a href="{{ file.file.url }}" class="icon-btn" title="Download">📥</a>{% endif %}
+                            {% if file.status == 'Completed' %}
+                            <a href="{% url 'download_excel' file.id %}" class="icon-btn" title="Download">📥</a>
+                            {% endif %}
                             {% if file.status == 'Completed' %}
                                 <a href="{% url 'validation_report' file.id %}" class="report-btn">📊 View Report</a>
                             {% endif %}
