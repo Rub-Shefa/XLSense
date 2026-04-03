@@ -270,7 +270,7 @@ def upload_file_view(request):
         parsed_files = []
 
         for file in files:
-            if not file.name.endswith((".xlsx", ".csv")):
+            if not file.name.endswith((".xlsx", ".csv", ".pdf", ".txt")):
                 messages.error(request, f"{file.name} is not supported.")
                 continue
 
@@ -283,8 +283,25 @@ def upload_file_view(request):
 
                 if file.name.endswith(".csv"):
                     df = pd.read_csv(file)
-                else:
+                elif file.name.endswith(".xlsx"):
                     df = pd.read_excel(file)
+                
+                else:
+                     # For PDF/TXT — just save, no processing
+                    uploaded_file.status = "Completed"
+                    uploaded_file.processed_time = timezone.now()
+                    uploaded_file.save()
+
+                    parsed_files.append(    
+                        {
+                        "file_name": file.name,
+                        "preview_data": [],
+                        "columns": [],
+                        "detected_types": {},
+                        }
+                    )
+
+                    continue
 
                 df = preprocess_dataframe(df)
                 df = remove_empty_unnamed_columns(df)

@@ -24,8 +24,8 @@
     border-radius:8px;
     font-weight:600;
     cursor:pointer;
-    text-decoration:none;   
-    display:inline-block;  
+    text-decoration:none;
+    display:inline-block;
 }
 
 .upload-btn-disabled{
@@ -45,15 +45,6 @@
     display:flex;
     align-items:center;
     gap:8px;
-}
-
-.card-box{
-    margin-top:25px;
-    padding:20px;
-    background:#eef5fb;
-    border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.08);
-    max-width:420px;
 }
 
 .preview-card{
@@ -98,7 +89,7 @@ table tr:hover{
 
 <label><strong>Select File(s):</strong></label><br><br>
 
-<input type="file" id="fileInput" name="file" multiple accept=".xlsx,.csv" style="display:none;">
+<input type="file" id="fileInput" name="file" multiple accept=".xlsx,.csv,.pdf,.txt" style="display:none;">
 
 <button type="button" id="chooseBtn" class="primary-btn">
 Choose File(s)
@@ -126,6 +117,7 @@ Upload File
 
 <h4>Detected Column Types</h4>
 
+{% if item.detected_types %}
 <div class="table-wrap">
 <table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
 <thead>
@@ -134,7 +126,6 @@ Upload File
 <th style="padding:14px;">Detected Type</th>
 </tr>
 </thead>
-
 <tbody>
 {% for column, dtype in item.detected_types.items %}
 <tr>
@@ -145,9 +136,15 @@ Upload File
 </tbody>
 </table>
 </div>
+{% else %}
+<p style="color:#64748b; font-style:italic;">
+Column detection not available for this file type.
+</p>
+{% endif %}
 
 <h4 style="margin-top:25px;">Spreadsheet Preview</h4>
 
+{% if item.preview_data %}
 <div class="table-wrap">
 <table style="border-collapse:collapse;font-size:13px;background:white;min-width:1200px;">
 
@@ -171,8 +168,12 @@ Upload File
 
 </table>
 </div>
+{% else %}
+<p style="color:#64748b; font-style:italic;">
+Preview not available for this file type.
+</p>
+{% endif %}
 
-<!-- ✅ 🔥 DOWNLOAD BUTTON PER FILE -->
 <a href="{% url 'download_excel' forloop.counter0 %}" class="primary-btn">
 Download {{ item.file_name|cut:"uploads/" }}
 </a>
