@@ -33,3 +33,6 @@ uploads/*
 # Ignore common Excel/CSV test files in the root or other folders
 *.xlsx
 *.csv
+
+# Worktrees
+.worktrees/
