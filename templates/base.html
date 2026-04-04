@@ -107,7 +107,7 @@
                     <a href="{% url 'manage_templates' %}" class="nav-item">Domain Templates</a>
                     <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
                 {% endif %}
-                <a href="#" class="nav-item">Domain Mapping</a>
+                <a href="{% url 'workbook_list' %}" class="nav-item">Workbook Editor</a>
                 <a href="{% url 'upload_history' %}" class="nav-item">Upload History</a>
             {% else %}
                 <a href="{% url 'login' %}" class="nav-item">Login</a>

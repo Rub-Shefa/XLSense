@@ -391,6 +391,34 @@ document.addEventListener("click", function(e){
         e.target.style.background = "#cfe3ff";
     }
 });
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const fileId = urlParams.get('processed_id');
+        const shouldDownload = urlParams.get('download');
+        const shouldPreview = urlParams.get('preview');
+
+        if (fileId) {
+            // 1. Open the preview modal immediately
+            if (shouldPreview) {
+                openPreview(fileId);
+            }
+
+            // 2. Trigger the download after a tiny delay so the preview doesn't break
+            if (shouldDownload) {
+                const downloadUrl = `/download/${fileId}/`;
+                setTimeout(() => { window.location.href = downloadUrl; }, 1000); 
+            }
+            
+            // 3. Clean the URL so it doesn't do this again if you refresh the page
+            setTimeout(() => {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }, 2000);
+            
+            const previewSection = document.querySelector('.latest-upload-preview');
+            if(previewSection) previewSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
 </script>
 
 {% endblock %}

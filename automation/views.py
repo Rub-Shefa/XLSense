@@ -14,6 +14,8 @@ from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.core.files.base import ContentFile
+from io import BytesIO
 from .utils import (
     validate_excel_data,
     get_formula_recommendations,
@@ -536,3 +538,114 @@ def preview_excel_view(request, file_id):
     )
 
     return JsonResponse({"table": table_html})
+
+
+@login_required
+def workbook_list_view(request):
+    files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+    return render(request, "workbook_list.html", {"files": files})
+
+
+
+@login_required
+def workbook_editor_view(request, file_id):
+    uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+    template = uploaded_file.template
+    file_path = uploaded_file.file.path
+    
+    # Get domain columns
+    val_cols = list(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
+    form_cols = list(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
+    db_columns = list(set(val_cols + form_cols))
+    
+    # ✅ Load saved column mappings first
+    saved_mappings = getattr(uploaded_file, 'column_mappings', {})
+
+    try:
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+        
+        user_original_columns = list(df.columns)
+
+        # ✅ FIX: Only add missing domain columns if no mappings exist (first-time load)
+        if not saved_mappings:
+            for col in db_columns:
+                if col not in df.columns:
+                    df[col] = "-"
+        
+        current_columns = list(df.columns)
+        preview_data = df.fillna("").values.tolist()
+
+    except Exception as e:
+        return HttpResponse(f"Error loading file: {e}")
+
+    # ✅ FIX: Convert to valid JSON string for Javascript
+    saved_mappings_json = json.dumps(saved_mappings)
+
+    return render(request, "workbook_editor.html", {
+        "file": uploaded_file,
+        "current_columns": current_columns,
+        "db_columns": db_columns,
+        "user_columns": user_original_columns,
+        "preview_data": preview_data,
+        "saved_mappings_json": saved_mappings_json, # Send the JSON version
+    })
+
+
+@csrf_exempt
+@login_required
+def save_workbook_data(request, file_id):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            headers = data.get('headers')
+            rows = data.get('rows')
+            mappings = data.get('mappings', {})
+            
+            # 1. Get the original file
+            original_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+            
+            # 2. Prevent Pandas Crash: Check for duplicate mapped columns
+            if len(headers) != len(set(headers)):
+                seen = set()
+                for i, h in enumerate(headers):
+                    if h in seen:
+                        headers[i] = f"{h}_{i}" # Rename duplicates (e.g., Name_1, Name_2)
+                    seen.add(h)
+
+            # 3. Create DataFrame
+            df = pd.DataFrame(rows, columns=headers)
+            
+            # 4. Generate new filename
+            original_name = os.path.basename(original_file.file.name)
+            name_part = original_name.replace('.csv', '').replace('.xlsx', '')
+            new_filename = f"{name_part}_edited.xlsx"
+            
+            # 5. Save to memory safely
+            output = BytesIO()
+            df.to_excel(output, index=False, engine='openpyxl') # Force openpyxl engine
+            output.seek(0)
+            
+            # 6. 🟢 FIX: Create BRAND NEW object WITHOUT column_mappings in the arguments
+            new_uploaded_file = UploadedFile(
+                user=request.user,
+                template=original_file.template,
+                status="Completed",
+                processed_time=timezone.now()
+            )
+            
+            # 🟢 FIX: Assign mappings exactly how you did in your original code!
+            new_uploaded_file.column_mappings = mappings
+            
+            # 7. Save the physical file (This also automatically saves the database record)
+            new_uploaded_file.file.save(new_filename, ContentFile(output.read()))
+            
+            return JsonResponse({"status": "success", "new_file_id": new_uploaded_file.id})
+
+        except Exception as e:
+            print(f"🔥 CRITICAL ERROR SAVING WORKBOOK: {str(e)}")
+            return JsonResponse({"status": "failed", "error": str(e)}, status=500)
+            
+    return JsonResponse({"status": "failed"}, status=400)

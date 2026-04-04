@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="history-page-wrapper">
+    <div class="history-header">
+        <div class="header-left">
+            <h1>Workbook Editor</h1>
+            <p class="stats-mini">Select a file to begin domain mapping and data cleaning.</p>
+        </div>
+    </div>
+
+    <h3 style="color: #1e293b; margin-bottom: 15px; font-size: 18px;">Original Uploads (Needs Mapping)</h3>
+    <div class="history-card-box" style="margin-bottom: 40px;">
+        <table class="history-data-table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Selected Domain</th>
+                    <th>Status</th>
+                    <th>Upload Time</th>
+                    <th class="text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                {% if not file.column_mappings and "_edited" not in file.file.name %}
+                <tr class="history-data-row">
+                    <td class="filename-cell">
+                        <span class="file-icon">📊</span>
+                        {{ file.file.name|cut:"uploads/" }}
+                    </td>
+                    <td>
+                        <span class="domain-badge">
+                            {{ file.template.domain_type|default:"General" }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status-pill status-success">● {{ file.status }}</span>
+                    </td>
+                    <td class="date-cell">
+                        {{ file.upload_time|date:"M d, Y H:i" }}
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor">✏️ Open Editor</a>
+                    </td>
+                </tr>
+                {% endif %}
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">
+                        <p>No files uploaded yet. Go to "Upload File" first.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3 style="color: #1e293b; margin-bottom: 15px; font-size: 18px;">Edited Workbooks (Saved & Mapped)</h3>
+    <div class="history-card-box">
+        <table class="history-data-table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Selected Domain</th>
+                    <th>Status</th>
+                    <th>Last Modified</th>
+                    <th class="text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                {% if file.column_mappings or "_edited" in file.file.name %}
+                <tr class="history-data-row">
+                    <td class="filename-cell">
+                        <span class="file-icon">📊</span>
+                        {{ file.file.name|cut:"uploads/" }}
+                    </td>
+                    <td>
+                        <span class="domain-badge">
+                            {{ file.template.domain_type|default:"General" }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status-pill status-success">● {{ file.status }}</span>
+                    </td>
+                    <td class="date-cell">
+                        {{ file.processed_time|date:"M d, Y H:i" }}
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor">✏️ View Edited File</a>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    /* Your EXACT original CSS */
+    .history-page-wrapper { padding: 30px; max-width: 1200px; margin: 0 auto; font-family: 'Segoe UI', sans-serif; }
+    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+    .history-header h1 { font-size: 24px; color: #1e293b; font-weight: 700; }
+    .stats-mini { color: #64748b; font-size: 14px; }
+    .history-card-box { background: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; overflow: hidden; }
+    .history-data-table { width: 100%; border-collapse: collapse; }
+    .history-data-table th { background: #f8fafc; padding: 14px 18px; font-size: 11px; text-transform: uppercase; color: #475569; border-bottom: 2px solid #e2e8f0; text-align: left;}
+    .history-data-table td { padding: 14px 18px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    .domain-badge { background: #eff6ff; color: #2563eb; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .status-pill { padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; }
+    .status-success { background: #dcfce7; color: #15803d; }
+    
+    .btn-open-editor {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white !important;
+        padding: 8px 16px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        display: inline-block;
+    }
+    .btn-open-editor:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+</style>
+{% endblock %}
