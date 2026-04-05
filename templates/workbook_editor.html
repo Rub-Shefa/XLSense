@@ -856,8 +856,19 @@ async function saveData() {
             const rowData = [];
             const cells = tr.querySelectorAll('td.editable-cell');
             colIndicesToKeep.forEach(idx => {
-                if (cells[idx]) rowData.push(cells[idx].innerText.trim());
-            });
+                if (cells[idx]) {
+                    const cell = cells[idx];
+
+                    rowData.push({
+                        value: cell.innerText.trim(),
+                        bold: cell.style.fontWeight === "bold",
+                        italic: cell.style.fontStyle === "italic",
+                        underline: cell.style.textDecoration === "underline",
+                        color: cell.style.color || null,
+                        bg: cell.style.backgroundColor || null
+                    });
+                }
+        });
             rows.push(rowData);
         });
 
@@ -883,8 +894,8 @@ async function saveData() {
         if (response.ok && result.status === "success") {
             showTemporaryToast("Saved successfully! Redirecting...", "success");
             setTimeout(() => {
-                // 🔥 Redirects to the Upload page, triggers download, AND triggers preview!
-                window.location.href = "{% url 'upload_file' %}?processed_id=" + result.new_file_id + "&download=true&preview=true";
+                //  Redirects to the Upload page, triggers download, AND triggers preview!
+                window.location.href = "{% url 'upload_file' %}?processed_id=" + result.new_file_id + "&preview=true";
             }, 800);
         } else { 
             showTemporaryToast("Error: " + (result.error || "Failed to save"), "error"); 
