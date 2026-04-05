@@ -89,10 +89,10 @@ table tr:hover{
 
 /* Header */
 .excel-table th {
-    background: #f8fafc;
+    background: #ffffff;
     font-weight: 700;
     border: 1px solid #d0d7de;
-    padding: 10px 16px;
+    padding: 10px 25px;
     text-align: center;
     position: sticky;
     top: 0;
@@ -110,12 +110,41 @@ table tr:hover{
 
 /* Alternate rows */
 .excel-table tr:nth-child(even) td {
-    background-color: #fafafa;
+    background-color: #ffffff;
 }
 
 /* Hover effect */
 .excel-table tr:hover td {
     background-color: #eef5ff;
+}
+/* ===== Excel Table Styles ===== */
+
+/* LIGHT (Excel-like) */
+/* LIGHT (Excel style) */
+.table-light th {
+    background: #F2F2F2;
+    color: #000;
+}
+.table-light tr:nth-child(even) td {
+    background: #FAFAFA;
+}
+
+/* MEDIUM (Excel Medium9 style) */
+.table-medium th {
+    background: #5B9BD5;
+    color: white;
+}
+.table-medium tr:nth-child(even) td {
+    background: #DEEAF6;
+}
+
+/* DARK (Excel Dark9 style) */
+.table-dark th {
+    background: #203864;
+    color: white;
+}
+.table-dark tr:nth-child(even) td {
+    background: #D9E1F2;
 }
 </style>
 
@@ -258,9 +287,7 @@ Upload File
 Excel Preview
 </button>
 
-<a href="{% url 'download_excel' item.id %}" class="primary-btn">
-Download
-</a>
+
 {% else %}
 <button class="primary-btn" style="opacity:0.6; cursor:not-allowed;">
 Excel Preview
@@ -278,7 +305,7 @@ Download
 {% endfor %}
 {% endif %}
 
-<!-- ✅ MODAL -->
+<!-- MODAL -->
 <div id="previewModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999;">
     <div style="width:95%; height:90%; margin:2% auto; background:white; border-radius:10px; overflow:auto; position:relative; padding:20px;">
         <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
@@ -287,7 +314,30 @@ Download
             ✕ Close
             </button>
         </div>
-        <div id="previewContent" style="width:100%; height:100%; overflow:auto;"></div>
+        
+        <!-- Format as Table -->
+<div style="margin-bottom:10px;">
+    <label><strong>Format as Table:</strong></label>
+
+    <select id="tableStyle" onchange="applyTableStyle()">
+        
+        <option value="">Default</option>
+        <option value="light">Light</option>
+        <option value="medium">Medium</option>
+        <option value="dark">Dark</option>
+    </select>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+        <a id="previewDownloadBtn" class="primary-btn">
+            ⬇ Download Styled Excel
+        </a>
+
+        <span id="formatStatus" style="font-weight:500; color:#64748b;">
+            Style: Default
+        </span>
+    </div>
+</div>
+
+<div id="previewContent" style="width:100%; height:100%; overflow:auto;"></div>
     </div>
 </div>
 
@@ -371,18 +421,40 @@ document.getElementById("uploadForm").addEventListener("submit", function(e){
 });
 
 /* EXCEL PREVIEW */
+let currentFileId = null;
+
 function openPreview(id){
+    currentFileId = id;
+
     fetch(`/preview/${id}/`)
     .then(res => res.json())
     .then(data => {
         document.getElementById("previewModal").style.display = "block";
         document.getElementById("previewContent").innerHTML = data.table;
+
+        updateDownloadLink(); 
     });
 }
 
 function closePreview(){
     document.getElementById("previewModal").style.display = "none";
     document.getElementById("previewContent").innerHTML = "";
+}
+
+function applyTableStyle() {
+    const style = document.getElementById("tableStyle").value;
+    const table = document.querySelector("#previewContent table");
+
+    if (!table) return;
+
+    // remove previous styles
+    table.classList.remove("table-light", "table-medium", "table-dark");
+
+    // apply new
+    if (style === "light") table.classList.add("table-light");
+    if (style === "medium") table.classList.add("table-medium");
+    if (style === "dark") table.classList.add("table-dark");
+    updateDownloadLink();
 }
 /* Excel-like cell click highlight */
 document.addEventListener("click", function(e){
@@ -419,6 +491,33 @@ document.addEventListener("click", function(e){
             if(previewSection) previewSection.scrollIntoView({ behavior: 'smooth' });
         }
     };
+    
+function downloadStyled(fileId){
+    const style = document.getElementById("tableStyle").value;
+
+    let url = `/download/${fileId}/`;
+
+    if(style){
+        url += `?style=${style}`;
+    }
+
+    window.location.href = url;
+}
+function updateDownloadLink(){
+    const style = document.getElementById("tableStyle").value;
+    const btn = document.getElementById("previewDownloadBtn");
+
+    let url = `/download/${currentFileId}/`;
+
+    if(style){
+        url += `?style=${style}`;
+    }
+
+    btn.href = url;
+
+    document.getElementById("formatStatus").innerText = 
+        "Style: " + (style || "Default");
+}
 </script>
 
 {% endblock %}
