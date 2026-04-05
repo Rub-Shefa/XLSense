@@ -2,6 +2,7 @@ import re
 import json
 import os
 import time
+from wsgiref import headers
 import pandas as pd
 from django.utils import timezone
 from django.shortcuts import render, redirect
@@ -475,7 +476,8 @@ def download_excel_view(request, file_id):
         uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
 
     file_path = uploaded_file.file.path.lower()
-
+    style = request.GET.get("style", "")
+    
 
     if file_path.endswith(".pdf") or file_path.endswith(".txt"):
         return HttpResponse(
@@ -488,13 +490,104 @@ def download_excel_view(request, file_id):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
+    
+    # remove empty rows (match preview)
+    df = df.dropna(how="all")
+    df = df[df.count(axis=1) > 1]
+    df = df.reset_index(drop=True)
 
-    # ===== APPLY FIXES LATER HERE =====
+    
+    from openpyxl import Workbook
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    from openpyxl.worksheet.table import Table, TableStyleInfo
 
+    wb = Workbook()
+    ws = wb.active
+
+    # write dataframe to sheet
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws.append(r)
+    from openpyxl.styles import Font, PatternFill
+
+    style_data = getattr(uploaded_file, "style_data", None)
+
+    if style_data:
+        for row_idx, row in enumerate(style_data, start=2):
+            for col_idx, cell in enumerate(row, start=1):
+                if isinstance(cell, dict):
+                    excel_cell = ws.cell(row=row_idx, column=col_idx)
+
+                    excel_cell.font = Font(
+                        bold=cell.get("bold", False),
+                        italic=cell.get("italic", False),
+                        underline="single" if cell.get("underline") else None,
+                        color=cell.get("color").replace("#","") if cell.get("color") else None
+                    )
+
+                    if cell.get("bg"):
+                        excel_cell.fill = PatternFill(
+                            start_color=cell.get("bg").replace("#",""),
+                            end_color=cell.get("bg").replace("#",""),
+                            fill_type="solid"
+                        )
+    # table range
+    from openpyxl.utils import get_column_letter
+
+    end_col = get_column_letter(len(df.columns))
+    end_row = len(df) + 1
+    table = Table(displayName="Table1", ref=f"A1:{end_col}{end_row}")
+
+    # style mapping
+    style_map = {
+        "light": "TableStyleLight9",
+        "medium": "TableStyleMedium9",
+        "dark": "TableStyleDark2"
+    }
+
+    table_style = style_map.get(style)
+
+    style_info = TableStyleInfo(
+        name=table_style,
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False
+    )
+
+    if table_style:
+        style_info = TableStyleInfo(
+            name=table_style,
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False
+        )
+        table.tableStyleInfo = style_info
+
+    ws.add_table(table)
+    # make header bold
+    
+    for col in ws.columns:
+        max_length = 0
+        col_letter = col[0].column_letter
+
+        for cell in col:
+            try:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            except:
+                pass
+
+        ws.column_dimensions[col_letter].width = max_length + 2
+    # save
     from io import BytesIO
     output = BytesIO()
-    df.to_excel(output, index=False)
+    wb.save(output)
     output.seek(0)
+    
+    
+    
+    
 
     response = HttpResponse(
         output,
@@ -529,13 +622,49 @@ def preview_excel_view(request, file_id):
     # auto width simulation (important)
     df = df.astype(str)
 
-    # convert to styled HTML
-    table_html = df.to_html(
-        classes="excel-table",
-        index=False,
-        border=0,
-        justify="center"
-    )
+    style_data = getattr(uploaded_file, "style_data", None)
+
+    html = '<table class="excel-table">'
+
+    # HEADER
+    html += '<thead><tr>'
+    for col in df.columns:
+        html += f'<th>{col}</th>'
+    html += '</tr></thead><tbody>'
+
+    # ROWS
+    for i, row in enumerate(df.values):
+        html += '<tr>'
+    
+        for j, val in enumerate(row):
+            style_attr = ""
+
+            if style_data and i < len(style_data) and j < len(style_data[i]):
+                cell = style_data[i][j]
+
+                if isinstance(cell, dict):
+                    styles = []
+
+                    if cell.get("bold"):
+                        styles.append("font-weight:bold")
+                    if cell.get("italic"):
+                        styles.append("font-style:italic")
+                    if cell.get("underline"):
+                        styles.append("text-decoration:underline")
+                    if cell.get("color"):
+                        styles.append(f"color:{cell.get('color')}")
+                    if cell.get("bg"):
+                        styles.append(f"background:{cell.get('bg')}")
+
+                    style_attr = f' style="{";".join(styles)}"'
+
+            html += f'<td{style_attr}>{val}</td>'
+
+        html += '</tr>'
+
+    html += '</tbody></table>'
+
+    table_html = html
 
     return JsonResponse({"table": table_html})
 
@@ -558,7 +687,7 @@ def workbook_editor_view(request, file_id):
     form_cols = list(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
     db_columns = list(set(val_cols + form_cols))
     
-    # ✅ Load saved column mappings first
+    # Load saved column mappings first
     saved_mappings = getattr(uploaded_file, 'column_mappings', {})
 
     try:
@@ -566,10 +695,11 @@ def workbook_editor_view(request, file_id):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
-        
+        df = preprocess_dataframe(df)
+        df = remove_empty_unnamed_columns(df)   
         user_original_columns = list(df.columns)
 
-        # ✅ FIX: Only add missing domain columns if no mappings exist (first-time load)
+        # FIX: Only add missing domain columns if no mappings exist (first-time load)
         if not saved_mappings:
             for col in db_columns:
                 if col not in df.columns:
@@ -581,7 +711,7 @@ def workbook_editor_view(request, file_id):
     except Exception as e:
         return HttpResponse(f"Error loading file: {e}")
 
-    # ✅ FIX: Convert to valid JSON string for Javascript
+    # FIX: Convert to valid JSON string for Javascript
     saved_mappings_json = json.dumps(saved_mappings)
 
     return render(request, "workbook_editor.html", {
@@ -616,8 +746,22 @@ def save_workbook_data(request, file_id):
                     seen.add(h)
 
             # 3. Create DataFrame
-            df = pd.DataFrame(rows, columns=headers)
-            
+            # extract values only
+            clean_rows = []
+
+            for row in rows:
+                clean_row = []
+                for cell in row:
+                    if isinstance(cell, dict):
+                        clean_row.append(cell.get("value"))
+                    else:
+                        clean_row.append(cell)
+                clean_rows.append(clean_row)
+
+            df = pd.DataFrame(clean_rows, columns=headers)
+            style_data = rows
+            df = preprocess_dataframe(df)
+            df = remove_empty_unnamed_columns(df)
             # 4. Generate new filename
             original_name = os.path.basename(original_file.file.name)
             name_part = original_name.replace('.csv', '').replace('.xlsx', '')
@@ -628,15 +772,14 @@ def save_workbook_data(request, file_id):
             df.to_excel(output, index=False, engine='openpyxl') # Force openpyxl engine
             output.seek(0)
             
-            # 6. 🟢 FIX: Create BRAND NEW object WITHOUT column_mappings in the arguments
+            # 6. FIX: Create BRAND NEW object WITHOUT column_mappings in the arguments
             new_uploaded_file = UploadedFile(
                 user=request.user,
                 template=original_file.template,
                 status="Completed",
                 processed_time=timezone.now()
             )
-            
-            # 🟢 FIX: Assign mappings exactly how you did in your original code!
+            new_uploaded_file.style_data = style_data
             new_uploaded_file.column_mappings = mappings
             
             # 7. Save the physical file (This also automatically saves the database record)
@@ -645,7 +788,7 @@ def save_workbook_data(request, file_id):
             return JsonResponse({"status": "success", "new_file_id": new_uploaded_file.id})
 
         except Exception as e:
-            print(f"🔥 CRITICAL ERROR SAVING WORKBOOK: {str(e)}")
+            print(f" CRITICAL ERROR SAVING WORKBOOK: {str(e)}")
             return JsonResponse({"status": "failed", "error": str(e)}, status=500)
             
     return JsonResponse({"status": "failed"}, status=400)
