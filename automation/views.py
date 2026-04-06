@@ -2,6 +2,7 @@ import re
 import json
 import os
 import time
+from unicodedata import normalize
 from wsgiref import headers
 import pandas as pd
 from django.utils import timezone
@@ -687,43 +688,109 @@ def workbook_editor_view(request, file_id):
     form_cols = list(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
     db_columns = list(set(val_cols + form_cols))
     
-    # Load saved column mappings first
+    # Smart normalization function
+    def normalize(col):
+        col = str(col).lower()
+        col = re.sub(r'[ _()%\.\-/]', '', col)
+        return col
+    
+    def find_matching_db_column(file_col, db_columns):
+        file_norm = normalize(file_col)
+        for db_col in db_columns:
+            db_norm = normalize(db_col)
+        
+            if file_norm == db_norm:
+                return db_col
+        
+        # Partial match (no length restriction)
+            if db_norm in file_norm or file_norm in db_norm:
+                return db_col
+        
+        # Specific rules
+            if "attendance" in db_norm and "attendance" in file_norm:
+                return db_col
+            if "quiz" in db_norm and "quiz" in file_norm:
+                return db_col
+            if "assignment" in db_norm and "assignment" in file_norm:
+                return db_col
+            if "mid" in db_norm and "mid" in file_norm:
+                return db_col
+            if "final" in db_norm and "final" in file_norm:
+                return db_col
+            if "total" in db_norm and "total" in file_norm:
+                return db_col
+        return None
+    # Load saved column mappings
     saved_mappings = getattr(uploaded_file, 'column_mappings', {})
-
+    
     try:
         if file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
-        df = preprocess_dataframe(df)
-        df = remove_empty_unnamed_columns(df)   
-        user_original_columns = list(df.columns)
-
-        # FIX: Only add missing domain columns if no mappings exist (first-time load)
-        if not saved_mappings:
-            for col in db_columns:
-                if col not in df.columns:
-                    df[col] = "-"
         
-        current_columns = list(df.columns)
+        # ===== ADD THESE LINES FOR PROPER CLEANING =====
+        df = preprocess_dataframe(df)
+        df = remove_empty_unnamed_columns(df)
+        # Remove fully empty rows
+        df = df.dropna(how='all')
+        df = df.reset_index(drop=True)
+        # ===============================================
+        
+        user_columns_original = list(df.columns)
+        
+        # Build columns_with_classes with pre-selected mapping
+        columns_with_classes = []
+        
+        for col in user_columns_original:
+            matched_db = find_matching_db_column(col, db_columns)
+            print(f"DEBUG: Column '{col}' -> matched_db: {matched_db}")  # ADD THIS LINE
+            print(f"DEBUG: db_columns list: {db_columns}")
+            if matched_db:
+                columns_with_classes.append({
+                    'name': col, 
+                    'class': 'header-matched',
+                    'matched_db': matched_db
+                })
+            else:
+                columns_with_classes.append({
+                    'name': col, 
+                    'class': 'header-custom',
+                    'matched_db': None
+                })
+        
+        # Add missing domain columns (only if no saved mappings)
+        if not saved_mappings:
+            matched_cols = [c['matched_db'] for c in columns_with_classes if c['matched_db']]
+            for db_col in db_columns:
+                if db_col not in matched_cols and db_col not in df.columns:
+                    df[db_col] = "-"
+                    columns_with_classes.append({
+                        'name': db_col, 
+                        'class': 'header-template-only',
+                        'matched_db': None
+                    })
+        
+        current_columns = [c['name'] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
-
+        
     except Exception as e:
+        print(f"ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         return HttpResponse(f"Error loading file: {e}")
-
-    # FIX: Convert to valid JSON string for Javascript
+    
     saved_mappings_json = json.dumps(saved_mappings)
-
+    
     return render(request, "workbook_editor.html", {
         "file": uploaded_file,
         "current_columns": current_columns,
+        "columns_with_classes": columns_with_classes,
         "db_columns": db_columns,
-        "user_columns": user_original_columns,
+        "user_columns": user_columns_original,
         "preview_data": preview_data,
-        "saved_mappings_json": saved_mappings_json, # Send the JSON version
+        "saved_mappings_json": saved_mappings_json,
     })
-
-
 @csrf_exempt
 @login_required
 def save_workbook_data(request, file_id):
