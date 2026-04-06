@@ -1,14 +1,20 @@
 {% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/theme.css' %}">
+{% endblock %}
+
 {% block content %}
 
 <style>
 .domain-select{
     padding:12px 14px;
     border-radius:10px;
-    border:1px solid #cbd5e1;
+    border:1px solid var(--color-border);
     width:280px;
-    background:#ffffff;
-    color:#2c3e50;
+    background:var(--color-surface);
+    color:var(--color-text);
     font-size:14px;
     font-weight:500;
     box-shadow:0 2px 6px rgba(0,0,0,0.06);
@@ -18,7 +24,7 @@
 
 .primary-btn{
     padding:10px 18px;
-    background:linear-gradient(90deg,#667eea,#764ba2);
+    background:linear-gradient(90deg,var(--color-accent),var(--color-accent-end));
     color:white;
     border:none;
     border-radius:8px;
@@ -26,6 +32,12 @@
     cursor:pointer;
     text-decoration:none;
     display:inline-block;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102,126,234,0.4);
 }
 
 .upload-btn-disabled{
@@ -39,20 +51,21 @@
 }
 
 .file-tag{
-    background:#eef5fb;
+    background:var(--color-surface);
     padding:6px 10px;
     border-radius:6px;
     display:flex;
     align-items:center;
     gap:8px;
+    border:1px solid var(--color-border);
 }
 
 .preview-card{
     margin-top:30px;
     padding:20px;
-    background:#fdfefe;
+    background:var(--color-surface);
     border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: var(--shadow);
     width:100%;
     max-width:calc(100vw - 360px);
     overflow:hidden;
@@ -61,13 +74,13 @@
 .table-wrap{
     width:100%;
     overflow-x:auto;
-    border:1px solid #d0d7de;
+    border:1px solid var(--color-border);
     border-radius:10px;
     margin-top:10px;
 }
 
 table tr:hover{
-    background-color:#f9fbff;
+    background-color:rgba(102,126,234,0.05);
 }
 
 /* ===== EXCEL LOOK (FINAL) ===== */
@@ -197,17 +210,17 @@ Upload File
 <hr>
 
 {% if latest_upload %}
-<div style="margin-top:20px; padding:15px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0; max-width:600px;">
-    <h3 style="margin-bottom:10px;">Latest Upload</h3>
-    <p><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
-    <p>
+<div style="margin-top:20px; padding:15px; background:var(--color-surface); border-radius:10px; border:1px solid var(--color-border); max-width:600px;">
+    <h3 style="margin-bottom:10px; color:var(--color-text);">Latest Upload</h3>
+    <p style="color:var(--color-text);"><strong>File:</strong> {{ latest_upload.file.name|cut:"uploads/" }}</p>
+    <p style="color:var(--color-text);">
         <strong>Status:</strong> 
         {% if latest_upload.status == "Completed" %}
-            <span style="color:green; font-weight:600;">Completed ✓</span>
+            <span style="color:var(--color-success); font-weight:600;">Completed ✓</span>
         {% elif latest_upload.status == "Processing" %}
             <span style="color:#f59e0b; font-weight:600;">Processing...</span>
         {% elif latest_upload.status == "Failed" %}
-            <span style="color:red; font-weight:600;">Failed ✖</span>
+            <span style="color:var(--color-error); font-weight:600;">Failed ✖</span>
         {% else %}
             {{ latest_upload.status }}
         {% endif %}

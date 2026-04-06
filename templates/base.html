@@ -1,14 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XLSense Dashboard</title>
+    <script>
+        (function() {
+            const saved = localStorage.getItem('xlsense-theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = saved || (prefersDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <link rel="stylesheet" href="{% load static %}{% static 'css/theme.css' %}">
     <style>
         :root {
             --sidebar-width: 250px;
-            --primary-color: #2c3e50;
-            --accent-color: #3498db;
-            --text-light: #ecf0f1;
+            --primary-color: #5B21B6;
+            --primary-color-rgb: 91, 33, 182;
+            --accent-color: #8b5cf6;
+            --text-light: #f5f3ff;
         }
 
         body {
@@ -16,21 +27,27 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             min-height: 100vh;
-            background-color: #f4f7f6;
+            background-color: var(--color-bg);
+            transition: var(--transition);
         }
 
         .sidebar {
             width: var(--sidebar-width);
-            background-color: var(--primary-color);
-            color: var(--text-light);
+            background-color: var(--color-surface);
+            color: var(--color-text);
             display: flex;
             flex-direction: column;
             padding: 20px 0;
+            transition: var(--transition);
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            border-right: 1px solid var(--color-border);
         }
 
         .sidebar h2 {
             text-align: center;
-            margin-bottom: 30px;
+            color: var(--color-text);
         }
 
         .sidebar-nav {
@@ -38,19 +55,79 @@
         }
 
         .nav-item {
-            padding: 15px 25px;
+            padding: 12px 25px;
             text-decoration: none;
-            color: var(--text-light);
+            color: var(--color-text-muted);
             display: block;
+            transition: all 0.2s ease;
+            position: relative;
+            border-left: 3px solid transparent;
+            margin: 4px 10px;
+            border-radius: 8px;
+            font-weight: 500;
         }
 
         .nav-item:hover {
-            background-color: #34495e;
+            background: rgba(102, 126, 234, 0.15);
+            color: var(--color-accent);
+            transform: translateX(3px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            color: white;
+            border-left-color: var(--color-accent);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .nav-item:focus {
+            outline: none;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .logout-btn {
+            padding: 12px 25px;
+            display: block;
+            text-decoration: none;
+            color: var(--color-text-muted);
+            background: transparent;
+            width: 95%;
+            text-align: left;
+            transition: all 0.2s ease;
+            position: relative;
+            border-left: 3px solid transparent;
+            margin: 4px 10px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-family: inherit;
+            font-size: inherit;
+            cursor: pointer;
+            border: none;
+            outline: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+
+        .logout-btn:hover {
+            background: linear-gradient(135deg, #ff8a7d, #ffb0a7);
+            color: black;
+            transform: translateX(3px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .logout-btn:focus {
+            outline: none;
+            background: rgba(231, 76, 60, 0.1);
         }
 
         .main-content {
             flex: 1;
             padding: 30px;
+            background-color: var(--color-bg);
+            transition: var(--transition);
+            margin-left: var(--sidebar-width);
         }
 
         .top-bar {
@@ -58,7 +135,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid var(--color-border);
             padding-bottom: 10px;
         }
 
@@ -95,29 +172,32 @@
 </head>
 <body>
     <nav class="sidebar">
-        <h2>XLSense</h2>
+        <a href="{% url 'homepage' %}" style="text-decoration: none;">
+            <h2 style="color: var(--color-text); text-align: center; margin-bottom: 30px; cursor: pointer; font-weight: 700;">XLSense</h2>
+        </a>
         <div class="sidebar-nav">
             {% if user.is_authenticated %}
                 {% if user.is_staff or user.is_superuser %}
-                    <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
-                    <a href="{% url 'manage_templates' %}" class="nav-item">Domain Templates</a>
-                    <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
+                    <a href="{% url 'dashboard' %}" class="nav-item {% if request.path == '/dashboard/' %}active{% endif %}">Dashboard</a>
+                    <a href="{% url 'manage_templates' %}" class="nav-item {% if request.path == '/manage-templates/' %}active{% endif %}">Domain Templates</a>
+                    <a href="{% url 'upload_file' %}" class="nav-item {% if request.path == '/upload/' %}active{% endif %}">Upload File</a>
                 {% else %}
-                    <a href="{% url 'dashboard' %}" class="nav-item">Dashboard</a>
-                    <a href="{% url 'manage_templates' %}" class="nav-item">Domain Templates</a>
-                    <a href="{% url 'upload_file' %}" class="nav-item">Upload File</a>
+                    <a href="{% url 'dashboard' %}" class="nav-item {% if request.path == '/dashboard/' %}active{% endif %}">Dashboard</a>
+                    <a href="{% url 'manage_templates' %}" class="nav-item {% if request.path == '/manage-templates/' %}active{% endif %}">Domain Templates</a>
+                    <a href="{% url 'upload_file' %}" class="nav-item {% if request.path == '/upload/' %}active{% endif %}">Upload File</a>
                 {% endif %}
-                <a href="{% url 'workbook_list' %}" class="nav-item">Workbook Editor</a>
-                <a href="{% url 'upload_history' %}" class="nav-item">Upload History</a>
+                <a href="{% url 'workbook_list' %}" class="nav-item {% if request.path == '/editor/' %}active{% endif %}">Workbook Editor</a>
+                <a href="{% url 'upload_history' %}" class="nav-item {% if request.path == '/history/' %}active{% endif %}">Upload History</a>
             {% else %}
-                <a href="{% url 'login' %}" class="nav-item">Login</a>
-                <a href="{% url 'register' %}" class="nav-item">Register</a>
+                <a href="{% url 'homepage' %}" class="nav-item {% if request.path == '/' %}active{% endif %}">Home</a>
+                <a href="{% url 'login' %}" class="nav-item {% if request.path == '/login/' %}active{% endif %}">Login</a>
+                <a href="{% url 'register' %}" class="nav-item {% if request.path == '/register/' %}active{% endif %}">Register</a>
             {% endif %}
         </div>
         {% if user.is_authenticated %}
-            <form method="post" action="{% url 'logout' %}" style="margin-top: auto;">
+            <form method="post" action="{% url 'logout' %}" style="margin-top: auto; padding: 0 10px;">
                 {% csrf_token %}
-                <button type="submit" class="nav-item" style="margin-top: auto; border: none; color: #e74c3c; background: none; cursor: pointer;">Logout</button>
+                <button type="submit" class="nav-item logout-btn">Logout</button>
             </form>
         {% endif %}
     </nav>
@@ -126,14 +206,17 @@
         <div class="top-bar">
             <h1>{% block title %}Overview{% endblock %}</h1>
             {% if user.is_authenticated %}
-                <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button class="theme-cycle-btn" id="themeCycleBtn" title="Cycle theme" aria-label="Cycle through themes">
+                        <img id="themeIconImg" src="{% static 'svg/system-mode.svg' %}" alt="Theme" style="width: 20px; height: 20px;">
+                    </button>
                     <div style="text-align: right;">
-                        <span style="display: block; font-size: 0.9rem; color: #2c3e50; font-weight: 700;">{{ user.username }}</span>
+                        <span style="display: block; font-size: 0.9rem; color: var(--color-text); font-weight: 700;">{{ user.username }}</span>
                         {% if user.is_staff %}
                             <span style="font-size: 0.7rem; color: #e74c3c; font-weight: bold; text-transform: uppercase;">Administrator</span>
                         {% endif %}
                     </div>
-                    <div style="width: 35px; height: 35px; background: #3498db; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">
+                    <div style="width: 35px; height: 35px; background: var(--color-accent); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">
                         {{ user.username|first|upper }}
                     </div>
                 </div>
@@ -154,5 +237,83 @@
         {% endblock %}
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeIcons = {
+                'system': '{% static "svg/system-mode.svg" %}',
+                'light': '{% static "svg/light-mode.svg" %}',
+                'dark': '{% static "svg/night-mode.svg" %}'
+            };
+
+            const themeOrder = ['system', 'light', 'dark'];
+
+            function getCurrentTheme() {
+                const saved = localStorage.getItem('xlsense-theme');
+                if (saved) return saved;
+                return 'system';
+            }
+
+            function cycleTheme() {
+                const current = getCurrentTheme();
+                let currentIndex = themeOrder.indexOf(current);
+                if (currentIndex === -1) {
+                    currentIndex = 0;
+                }
+                const nextIndex = (currentIndex + 1) % themeOrder.length;
+                const nextTheme = themeOrder[nextIndex];
+                
+                if (nextTheme === 'system') {
+                    localStorage.removeItem('xlsense-theme');
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+                } else {
+                    localStorage.setItem('xlsense-theme', nextTheme);
+                    document.documentElement.setAttribute('data-theme', nextTheme);
+                }
+                
+                updateThemeButton();
+            }
+
+            function updateThemeButton() {
+                const btn = document.getElementById('themeCycleBtn');
+                if (!btn) return;
+                const current = getCurrentTheme();
+                const img = btn.querySelector('img');
+                if (img && themeIcons[current]) {
+                    img.src = themeIcons[current];
+                }
+            }
+
+            const btn = document.getElementById('themeCycleBtn');
+            if (btn) {
+                btn.addEventListener('click', cycleTheme);
+                updateThemeButton();
+            }
+        });
+    </script>
+    <style>
+        .theme-cycle-btn {
+            background: transparent;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+            color: var(--color-text);
+        }
+        .theme-cycle-btn:hover {
+            background: var(--color-surface);
+            transform: scale(1.1);
+        }
+
+        .theme-cycle-btn img {
+            fill: var(--color-text);
+        }
+
+        [data-theme="dark"] .theme-cycle-btn img {
+            filter: invert(1) brightness(1.2);
+        }
+    </style>
 </body>
 </html>

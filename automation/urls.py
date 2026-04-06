@@ -4,6 +4,8 @@ from . import views
 from .views import download_excel_view
 
 urlpatterns = [
+    # Homepage
+    path("", views.homepage_view, name="homepage"),
     # Authentication
     path("", views.login_view, name="login"),
     path("login/", views.login_view, name="login"),
@@ -24,12 +26,13 @@ urlpatterns = [
     ),
     # AI Explain
     path("ai-explain/", views.ai_explain_view, name="ai_explain"),
-
-    path('editor/', views.workbook_list_view, name='workbook_list'),
-    path('editor/<int:file_id>/', views.workbook_editor_view, name='workbook_editor'),
-    path('save-workbook/<int:file_id>/', views.save_workbook_data, name='save_workbook'),
+    path("editor/", views.workbook_list_view, name="workbook_list"),
+    path("editor/<int:file_id>/", views.workbook_editor_view, name="workbook_editor"),
+    path(
+        "save-workbook/<int:file_id>/", views.save_workbook_data, name="save_workbook"
+    ),
 ]
 urlpatterns += [
-    path('download/<int:file_id>/', download_excel_view, name='download_excel'),
+    path("download/<int:file_id>/", download_excel_view, name="download_excel"),
     path("preview/<int:file_id>/", views.preview_excel_view, name="preview_excel"),
 ]

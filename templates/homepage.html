@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLSense - Intelligent Data Validation</title>
+    <script>
+        (function() {
+            const saved = localStorage.getItem('xlsense-theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = saved || (prefersDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        :root {
+            --color-bg: #f8f9fa;
+            --color-surface: #ffffff;
+            --color-text: #2c3e50;
+            --color-text-muted: #6c757d;
+            --color-primary: #5B21B6;
+            --color-accent: #667eea;
+            --color-accent-end: #764ba2;
+            --color-border: #dee2e6;
+        }
+
+        [data-theme="dark"] {
+            --color-bg: #0f0f1a;
+            --color-surface: #1a1a2e;
+            --color-text: #e9ecef;
+            --color-text-muted: #adb5bd;
+            --color-accent: #8b5cf6;
+            --color-accent-end: #a78bfa;
+            --color-border: #2d3748;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        .site-header {
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .header-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--color-text);
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header-nav {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .header-nav a {
+            color: var(--color-text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: color 0.2s;
+            padding: 5px 10px;
+            border-radius: 4px;
+            position: relative;
+        }
+        
+        .header-nav a::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            left: 10px;
+            right: 10px;
+            height: 2px;
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            border-radius: 1px;
+            transform: scaleX(0);
+            transform-origin: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .header-nav a:hover::after {
+            transform: scaleX(1);
+        }
+        
+        .header-nav a:active {
+            transform: scale(0.95);
+        }
+        
+        .header-breadcrumbs {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9rem;
+            color: var(--color-text-muted);
+        }
+        
+        .header-breadcrumbs a {
+            color: var(--color-text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        .header-breadcrumbs a:hover,
+        .header-breadcrumbs a.active {
+            color: var(--color-text);
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 30px;
+            margin-left: 30px;
+        }
+        
+        .header-action-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+            background: transparent;
+            color: var(--color-text);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .header-action-btn:hover {
+            background: var(--color-surface);
+            transform: scale(1.05);
+        }
+        
+        .header-action-btn:active {
+            transform: scale(0.95);
+        }
+
+        [data-theme="dark"] .header-action-btn img {
+            filter: invert(1) brightness(1.2);
+        }
+        
+        .header-link-btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        
+        .header-link-login {
+            background: transparent;
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+        }
+        
+        .header-link-login:hover {
+            background: var(--color-surface);
+            border-color: var(--color-accent);
+            color: var(--color-accent);
+        }
+        
+        .header-link-register {
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            color: white;
+            border: none;
+        }
+        
+        .header-link-register:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+            color: white;
+        }
+        
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .username {
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        
+        .hero {
+            margin-top: 0;
+            flex: 1;
+        }
+
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(102,126,234,0.85), rgba(118,75,162,0.85)),
+                        url('{% static "images/xlsense-hero.png" %}') center/cover no-repeat;
+            text-align: center;
+            color: white;
+            padding: 80px 20px;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 150px;
+            background: linear-gradient(to top, var(--color-bg), transparent);
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 800px;
+        }
+
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .hero p {
+            font-size: 1rem;
+            margin-bottom: 40px;
+            opacity: 0.95;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102,126,234,0.5);
+            color: white;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+            padding: 16px 32px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-outline:hover {
+            background: white;
+            color: var(--color-accent);
+        }
+
+        .features {
+            padding: 80px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .features h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 50px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            background: var(--color-surface);
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+
+        .feature-card p {
+            color: var(--color-text-muted);
+        }
+
+        .testimonials {
+            padding: 80px 20px;
+            background: var(--color-surface);
+        }
+
+        .testimonials h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 50px;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .testimonial-card {
+            background: var(--color-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+        }
+
+        .testimonial-quote {
+            font-size: 1rem;
+            font-style: italic;
+            margin-bottom: 20px;
+            color: var(--color-text);
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .testimonial-avatar {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .testimonial-info h4 {
+            font-size: 1rem;
+            margin-bottom: 3px;
+        }
+
+        .testimonial-info p {
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+        }
+
+        .cta {
+            padding: 80px 20px;
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+            text-align: center;
+        }
+
+        .cta h2 {
+            font-size: 2rem;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .cta p {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 30px;
+        }
+
+        .cta .btn-primary {
+            background: white;
+            color: var(--color-accent);
+        }
+
+        .cta .btn-primary:hover {
+            background: #f0f0f0;
+            transform: translateY(-3px);
+        }
+
+        .footer {
+            background: var(--color-surface);
+            padding: 60px 20px 30px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .footer h3 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+
+        .footer ul {
+            list-style: none;
+        }
+
+        .footer li {
+            margin-bottom: 10px;
+        }
+
+        .footer a {
+            color: var(--color-text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--color-accent);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--color-border);
+            color: var(--color-text-muted);
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .footer-social a {
+            font-size: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .hero p { font-size: 1rem; }
+            .features-grid { grid-template-columns: 1fr; }
+            .testimonials-grid { grid-template-columns: 1fr; }
+            .hero-buttons { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-left">
+                    <a href="{% url 'homepage' %}" style="text-decoration: none;">
+                        <h1 class="header-title">XLSense</h1>
+                    </a>
+                    <nav class="header-nav">
+                        <a href="#features">Features</a>
+                        <a href="#how-it-works">How It Works</a>
+                        <a href="#testimonials">Testimonials</a>
+                        <a href="#pricing">Pricing</a>
+                    </nav>
+                </div>
+                <div class="header-right">
+                    <div class="header-actions">
+                        <button id="themeToggleBtn" class="header-action-btn" title="Toggle theme" aria-label="Toggle between light and dark theme">
+                            <img src="{% static 'svg/system-mode.svg' %}" alt="Theme" style="width: 20px; height: 20px;">
+                        </button>
+                        {% if user.is_authenticated %}
+                        <a href="{% url 'dashboard' %}" title="Go to Dashboard">
+                            <div class="user-avatar" style="cursor: pointer;">
+                                {{ user.username|first|upper }}
+                            </div>
+                        </a>
+                        {% else %}
+                        <a href="{% url 'login' %}" class="header-link-btn header-link-login">Login</a>
+                        <a href="{% url 'register' %}" class="header-link-btn header-link-register">Register</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <header class="hero">
+        <div class="hero-content">
+            <h1>Intelligent Data Validation for Excel & CSV</h1>
+            <p>Validate your spreadsheets against domain-specific rules, get quality scores, and receive AI-powered explanations for errors.</p>
+            <div class="hero-buttons">
+                <a href="{% url 'register' %}" class="btn-primary">Get Started</a>
+                <a href="{% url 'login' %}" class="btn-outline">Login</a>
+            </div>
+        </div>
+    </header>
+
+    <section id="features" class="features">
+        <h2>Powerful Features</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🛡️</div>
+                <h3>Validation Engine</h3>
+                <p>Define and apply custom validation rules based on your domain. Catch data errors before they cause problems.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h3>AI Explanations</h3>
+                <p>Get intelligent explanations for validation errors. Understand what went wrong and how to fix it.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📋</div>
+                <h3>Domain Templates</h3>
+                <p>Choose from pre-built domain templates or create your own. Tailor validation to your specific needs.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📂</div>
+                <h3>Upload History</h3>
+                <p>Track all your uploads, view past validation reports, and re-download processed files anytime.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works" class="features">
+        <h2>How It Works</h2>
+        <div class="features-grid" style="grid-template-columns: repeat(2, 1fr); max-width: 900px;">
+            <div class="feature-card">
+                <div class="feature-icon">📤</div>
+                <h3>1. Upload Your File</h3>
+                <p>Upload Excel or CSV files. Our system accepts files up to 10MB with thousands of rows.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚙️</div>
+                <h3>2. Select Domain</h3>
+                <p>Choose from pre-built domain templates like Sales, Inventory, Finance, or create custom rules.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3>3. Get Results</h3>
+                <p>Instantly see which rows pass or fail. Review detailed error descriptions for each issue.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">✨</div>
+                <h3>4. AI-Powered Insights</h3>
+                <p>Get intelligent explanations for errors and recommendations on how to fix them.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="testimonials" class="testimonials">
+        <h2>What Users Say</h2>
+        <div class="testimonials-grid">
+            <div class="testimonial-card">
+                <p class="testimonial-quote">"XLSense transformed how we validate our sales data. The AI explanations are incredibly helpful for training new team members."</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">JD</div>
+                    <div class="testimonial-info">
+                        <h4>Jane Doe</h4>
+                        <p>Data Analyst at TechCorp</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <p class="testimonial-quote">"The domain templates saved us hours of work. We now catch errors before they reach our reporting system."</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">MS</div>
+                    <div class="testimonial-info">
+                        <h4>Mark Smith</h4>
+                        <p>Operations Manager at RetailCo</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <p class="testimonial-quote">"Finally, a tool that makes data validation painless. Our team went from spending hours manually checking spreadsheets to just a few minutes."</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">AL</div>
+                    <div class="testimonial-info">
+                        <h4>Amanda Lee</h4>
+                        <p>Finance Director at ScaleUp Inc</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="cta">
+        <h2>Ready to Start Validating Your Data?</h2>
+        <p>Join thousands of users who trust XLSense for their data quality needs.</p>
+        <a href="{% url 'register' %}" class="btn-primary">Start Free Today</a>
+    </section>
+
+    <footer class="footer">
+        <div class="footer-grid">
+            <div class="footer-col">
+                <h3>About XLSense</h3>
+                <p style="color: var(--color-text-muted);">Intelligent data validation platform for Excel and CSV files.</p>
+            </div>
+            <div class="footer-col">
+                <h3>Features</h3>
+                <ul>
+                    <li><a href="#">Validation Engine</a></li>
+                    <li><a href="#">AI Explanations</a></li>
+                    <li><a href="#">Domain Templates</a></li>
+                    <li><a href="#">Upload History</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h3>Support</h3>
+                <ul>
+                    <li><a href="#">Documentation</a></li>
+                    <li><a href="#">FAQ</a></li>
+                    <li><a href="#">Contact Us</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h3>Contact</h3>
+                <ul>
+                    <li><a href="#">support@xlsense.com</a></li>
+                    <li><a href="#">Twitter</a></li>
+                    <li><a href="#">GitHub</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <div class="footer-social">
+                <a href="#">🐦</a>
+                <a href="#">📘</a>
+                <a href="#">💼</a>
+            </div>
+            <p>&copy; 2026 XLSense. All rights reserved.</p>
+        </div>
+    </footer>
+    
+    <script>
+        // Theme toggle functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeToggleBtn = document.getElementById('themeToggleBtn');
+            if (!themeToggleBtn) return;
+            
+            const themeIcons = {
+                'system': '{% static "svg/system-mode.svg" %}',
+                'light': '{% static "svg/light-mode.svg" %}',
+                'dark': '{% static "svg/night-mode.svg" %}'
+            };
+
+            const themeOrder = ['system', 'light', 'dark'];
+
+            // Get current theme from localStorage or system preference
+            function getCurrentTheme() {
+                const saved = localStorage.getItem('xlsense-theme');
+                if (saved) return saved;
+                return 'system';
+            }
+            
+            // Update button icon based on current theme
+            function updateThemeIcon() {
+                const currentTheme = getCurrentTheme();
+                themeToggleBtn.innerHTML = '<img src="' + themeIcons[currentTheme] + '" alt="Theme" style="width: 20px; height: 20px;">';
+            }
+            
+            // Cycle theme (system -> light -> dark)
+            function cycleTheme() {
+                const current = getCurrentTheme();
+                let currentIndex = themeOrder.indexOf(current);
+                if (currentIndex === -1) {
+                    currentIndex = 0;
+                }
+                const nextIndex = (currentIndex + 1) % themeOrder.length;
+                const nextTheme = themeOrder[nextIndex];
+                
+                if (nextTheme === 'system') {
+                    localStorage.removeItem('xlsense-theme');
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+                } else {
+                    localStorage.setItem('xlsense-theme', nextTheme);
+                    document.documentElement.setAttribute('data-theme', nextTheme);
+                }
+                
+                updateThemeIcon();
+            }
+            
+            // Initialize
+            updateThemeIcon();
+            
+            // Event listener
+            themeToggleBtn.addEventListener('click', cycleTheme);
+        });
+    </script>
+</body>
+</html>
