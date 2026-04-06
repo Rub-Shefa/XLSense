@@ -407,16 +407,19 @@
         <thead>
             <tr id="headerRow">
                 <th class="row-header-cell" style="width:55px;"><i class="fas fa-grip-vertical"></i></th>
-                {% for col in current_columns %}
-                <th class="{% if col in db_columns and col in user_columns %}header-matched{% elif col in db_columns %}header-template-only{% else %}header-custom{% endif %}"
-                    data-colname="{{ col }}">
+                {% for col_info in columns_with_classes %}
+                <th class="{{ col_info.class }}"
+                    data-colname="{{ col_info.name }}">
                     <div class="header-content">
                         <button class="del-col" onclick="deleteColumnHandler(this)"><i class="fas fa-times"></i></button>
-                        <span class="header-label" contenteditable="true">{{ col }}</span>
+                        <span class="header-label" contenteditable="true">{{ col_info.name }}</span>
                         <select class="mapping-select" onchange="handleMappingChange(this)">
                             <option value="">-- Map to DB field --</option>
                             {% for db_col in db_columns %}
-                            <option value="{{ db_col }}" {% if col == db_col %}selected{% endif %}>{{ db_col }}</option>
+                            <option value="{{ db_col }}" 
+                                {% if col_info.matched_db == db_col %}selected{% endif %}>
+                                {{ db_col }}
+                            </option>
                             {% endfor %}
                         </select>
                     </div>
