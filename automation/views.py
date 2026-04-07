@@ -516,25 +516,68 @@ def download_excel_view(request, file_id):
 
     style_data = getattr(uploaded_file, "style_data", None)
 
+    # Helper function to convert color to aRGB format
+    def convert_to_argb(color_value):
+        """Convert various color formats to openpyxl aRGB format (8 hex chars)"""
+        if not color_value:
+            return None
+        
+        # Remove any # prefix and convert to string
+        color_str = str(color_value).strip()
+        if color_str.startswith('#'):
+            color_str = color_str[1:]
+        
+        # Remove rgb() or rgba() if present
+        if color_str.startswith('rgb'):
+            import re
+            rgb_match = re.search(r'rgb\((\d+),\s*(\d+),\s*(\d+)\)', color_str)
+            if rgb_match:
+                r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                return f"FF{r:02x}{g:02x}{b:02x}".upper()
+        
+        # If it's 6 hex characters, add FF prefix for alpha
+        if len(color_str) == 6 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
+            return f"FF{color_str.upper()}"
+        
+        # If it's 3 hex characters (like F00), expand to 6
+        if len(color_str) == 3 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
+            expanded = ''.join([c*2 for c in color_str])
+            return f"FF{expanded.upper()}"
+        
+        # If it's already 8 hex characters, use as is
+        if len(color_str) == 8 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
+            return color_str.upper()
+        
+        # Default to black with full opacity
+        return "FF000000"
+
     if style_data:
-        for row_idx, row in enumerate(style_data, start=2):
+        for row_idx, row in enumerate(style_data, start=2):  # +2 because of header row (1-indexed, row 1 is header)
             for col_idx, cell in enumerate(row, start=1):
                 if isinstance(cell, dict):
                     excel_cell = ws.cell(row=row_idx, column=col_idx)
 
+                    # Handle font color
+                    font_color = None
+                    if cell.get("color"):
+                        font_color = convert_to_argb(cell.get("color"))
+                    
                     excel_cell.font = Font(
                         bold=cell.get("bold", False),
                         italic=cell.get("italic", False),
                         underline="single" if cell.get("underline") else None,
-                        color=cell.get("color").replace("#","") if cell.get("color") else None
+                        color=font_color
                     )
 
+                    # Handle background color
                     if cell.get("bg"):
+                        bg_color = convert_to_argb(cell.get("bg"))
                         excel_cell.fill = PatternFill(
-                            start_color=cell.get("bg").replace("#",""),
-                            end_color=cell.get("bg").replace("#",""),
+                            start_color=bg_color,
+                            end_color=bg_color,
                             fill_type="solid"
                         )
+    
     # table range
     from openpyxl.utils import get_column_letter
 
@@ -590,10 +633,6 @@ def download_excel_view(request, file_id):
     wb.save(output)
     output.seek(0)
     
-    
-    
-    
-
     response = HttpResponse(
         output,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -603,7 +642,6 @@ def download_excel_view(request, file_id):
     response["Content-Disposition"] = f'attachment; filename="{filename}_processed.xlsx"'
 
     return response
-
 @login_required
 def preview_excel_view(request, file_id):
     if request.user.is_staff:
