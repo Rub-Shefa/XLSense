@@ -233,6 +233,7 @@ def generate_ai_explanation(
 
     return explanation.strip(), False
 
+
 def preprocess_dataframe(df):
     # clean column names
     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
@@ -258,7 +259,10 @@ def preprocess_dataframe(df):
 
 
 def remove_empty_unnamed_columns(df):
-    return df.loc[:, ~(
-        df.columns.astype(str).str.lower().str.contains("unnamed") &
-        (df.isna().sum() == len(df))
-    )]
+    return df.loc[
+        :,
+        ~(
+            df.columns.astype(str).str.lower().str.contains("unnamed")
+            & (df.isna().sum() == len(df))
+        ),
+    ]
