@@ -78,13 +78,13 @@ class ValidationResult(models.Model):
         directly from the model instance.
         """
         # We import here to avoid circular dependency with views/utils
-        from .utils import generate_ai_explanation 
-        
+        from .utils import generate_ai_explanation
+
         # We reuse your new professional logic
         return generate_ai_explanation(
             formula_name="Validation Rule",
             target_column=self.column_name,
-            condition_expression=self.error_details
+            condition_expression=self.error_details,
         )
 
 

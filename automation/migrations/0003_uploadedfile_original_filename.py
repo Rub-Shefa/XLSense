@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('automation', '0002_remove_auditlog_file_uploadedfile_validationresult_and_more'),
+        (
+            "automation",
+            "0002_remove_auditlog_file_uploadedfile_validationresult_and_more",
+        ),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='uploadedfile',
-            name='original_filename',
+            model_name="uploadedfile",
+            name="original_filename",
             field=models.CharField(blank=True, max_length=255),
         ),
     ]

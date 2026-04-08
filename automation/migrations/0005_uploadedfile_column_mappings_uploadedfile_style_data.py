@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('automation', '0004_remove_uploadedfile_original_filename'),
+        ("automation", "0004_remove_uploadedfile_original_filename"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='uploadedfile',
-            name='column_mappings',
+            model_name="uploadedfile",
+            name="column_mappings",
             field=models.JSONField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='uploadedfile',
-            name='style_data',
+            model_name="uploadedfile",
+            name="style_data",
             field=models.JSONField(blank=True, null=True),
         ),
     ]

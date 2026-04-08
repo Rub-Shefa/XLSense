@@ -6,41 +6,75 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('automation', '0001_initial'),
+        ("automation", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='auditlog',
-            name='file',
+            model_name="auditlog",
+            name="file",
         ),
         migrations.CreateModel(
-            name='UploadedFile',
+            name="UploadedFile",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('file', models.FileField(upload_to='uploads/')),
-                ('upload_time', models.DateTimeField(auto_now_add=True)),
-                ('processed_time', models.DateTimeField(blank=True, null=True)),
-                ('status', models.CharField(default='Pending', max_length=50)),
-                ('template', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to='automation.domaintemplate')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("file", models.FileField(upload_to="uploads/")),
+                ("upload_time", models.DateTimeField(auto_now_add=True)),
+                ("processed_time", models.DateTimeField(blank=True, null=True)),
+                ("status", models.CharField(default="Pending", max_length=50)),
+                (
+                    "template",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="automation.domaintemplate",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='ValidationResult',
+            name="ValidationResult",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('row_index', models.IntegerField()),
-                ('column_name', models.CharField(max_length=100)),
-                ('error_details', models.TextField()),
-                ('is_valid', models.BooleanField(default=False)),
-                ('file', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='automation.uploadedfile')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("row_index", models.IntegerField()),
+                ("column_name", models.CharField(max_length=100)),
+                ("error_details", models.TextField()),
+                ("is_valid", models.BooleanField(default=False)),
+                (
+                    "file",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="automation.uploadedfile",
+                    ),
+                ),
             ],
         ),
         migrations.DeleteModel(
-            name='File',
+            name="File",
         ),
     ]
