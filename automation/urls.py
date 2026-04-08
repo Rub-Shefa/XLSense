@@ -28,8 +28,16 @@ urlpatterns = [
     # AI Explain
     path("ai-explain/", views.ai_explain_view, name="ai_explain"),
     path("editor/", views.workbook_list_view, name="workbook_list"),
-    path('editor/<int:file_id>/', editor_views.workbook_editor_view, name='workbook_editor'),
-    path('editor/<int:file_id>/save/', editor_views.save_workbook_data, name='save_workbook'),
+    path(
+        "editor/<int:file_id>/",
+        editor_views.workbook_editor_view,
+        name="workbook_editor",
+    ),
+    path(
+        "editor/<int:file_id>/save/",
+        editor_views.save_workbook_data,
+        name="save_workbook",
+    ),
 ]
 urlpatterns += [
     path("download/<int:file_id>/", download_excel_view, name="download_excel"),

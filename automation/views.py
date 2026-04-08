@@ -49,7 +49,6 @@ def redirectBasedOnRole(user):
     return redirect("dashboard")
 
 
-
 def detect_column_types(df):
     detected_types = {}
 
@@ -109,10 +108,13 @@ def preprocess_dataframe(df):
 
 # ✅ SAFE unnamed column remover (ONLY if empty)
 def remove_empty_unnamed_columns(df):
-    return df.loc[:, ~(
-        df.columns.astype(str).str.lower().str.contains("unnamed") &
-        (df.isna().sum() == len(df))
-    )]
+    return df.loc[
+        :,
+        ~(
+            df.columns.astype(str).str.lower().str.contains("unnamed")
+            & (df.isna().sum() == len(df))
+        ),
+    ]
 
 
 def login_view(request):
@@ -293,21 +295,20 @@ def upload_file_view(request):
                     df = pd.read_csv(file)
                 elif file.name.endswith(".xlsx"):
                     df = pd.read_excel(file)
-                
+
                 else:
-                     # For PDF/TXT — just save, no processing
+                    # For PDF/TXT — just save, no processing
                     uploaded_file.status = "Completed"
                     uploaded_file.processed_time = timezone.now()
                     uploaded_file.save()
 
-                    parsed_files.append(    
+                    parsed_files.append(
                         {
-                        "id": uploaded_file.id,
-                        "file_name": file.name,
-                        "preview_data": None,
-                        "columns": [],
-                        "detected_types": None,
-                        
+                            "id": uploaded_file.id,
+                            "file_name": file.name,
+                            "preview_data": None,
+                            "columns": [],
+                            "detected_types": None,
                         }
                     )
 
@@ -339,7 +340,6 @@ def upload_file_view(request):
                         "preview_data": preview_data,
                         "columns": columns,
                         "detected_types": detected_types,
-                         
                     }
                 )
 
@@ -482,26 +482,22 @@ def download_excel_view(request, file_id):
 
     file_path = uploaded_file.file.path.lower()
     style = request.GET.get("style", "")
-    
 
     if file_path.endswith(".pdf") or file_path.endswith(".txt"):
         return HttpResponse(
-            "Download not available for this file type.",
-            content_type="text/plain"
+            "Download not available for this file type.", content_type="text/plain"
         )
-
 
     if file_path.endswith(".csv"):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
-    
+
     # remove empty rows (match preview)
     df = df.dropna(how="all")
     df = df[df.count(axis=1) > 1]
     df = df.reset_index(drop=True)
 
-    
     from openpyxl import Workbook
     from openpyxl.utils.dataframe import dataframe_to_rows
     from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -521,38 +517,51 @@ def download_excel_view(request, file_id):
         """Convert various color formats to openpyxl aRGB format (8 hex chars)"""
         if not color_value:
             return None
-        
+
         # Remove any # prefix and convert to string
         color_str = str(color_value).strip()
-        if color_str.startswith('#'):
+        if color_str.startswith("#"):
             color_str = color_str[1:]
-        
+
         # Remove rgb() or rgba() if present
-        if color_str.startswith('rgb'):
+        if color_str.startswith("rgb"):
             import re
-            rgb_match = re.search(r'rgb\((\d+),\s*(\d+),\s*(\d+)\)', color_str)
+
+            rgb_match = re.search(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", color_str)
             if rgb_match:
-                r, g, b = int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3))
+                r, g, b = (
+                    int(rgb_match.group(1)),
+                    int(rgb_match.group(2)),
+                    int(rgb_match.group(3)),
+                )
                 return f"FF{r:02x}{g:02x}{b:02x}".upper()
-        
+
         # If it's 6 hex characters, add FF prefix for alpha
-        if len(color_str) == 6 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
+        if len(color_str) == 6 and all(
+            c in "0123456789ABCDEFabcdef" for c in color_str
+        ):
             return f"FF{color_str.upper()}"
-        
+
         # If it's 3 hex characters (like F00), expand to 6
-        if len(color_str) == 3 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
-            expanded = ''.join([c*2 for c in color_str])
+        if len(color_str) == 3 and all(
+            c in "0123456789ABCDEFabcdef" for c in color_str
+        ):
+            expanded = "".join([c * 2 for c in color_str])
             return f"FF{expanded.upper()}"
-        
+
         # If it's already 8 hex characters, use as is
-        if len(color_str) == 8 and all(c in '0123456789ABCDEFabcdef' for c in color_str):
+        if len(color_str) == 8 and all(
+            c in "0123456789ABCDEFabcdef" for c in color_str
+        ):
             return color_str.upper()
-        
+
         # Default to black with full opacity
         return "FF000000"
 
     if style_data:
-        for row_idx, row in enumerate(style_data, start=2):  # +2 because of header row (1-indexed, row 1 is header)
+        for row_idx, row in enumerate(
+            style_data, start=2
+        ):  # +2 because of header row (1-indexed, row 1 is header)
             for col_idx, cell in enumerate(row, start=1):
                 if isinstance(cell, dict):
                     excel_cell = ws.cell(row=row_idx, column=col_idx)
@@ -561,23 +570,21 @@ def download_excel_view(request, file_id):
                     font_color = None
                     if cell.get("color"):
                         font_color = convert_to_argb(cell.get("color"))
-                    
+
                     excel_cell.font = Font(
                         bold=cell.get("bold", False),
                         italic=cell.get("italic", False),
                         underline="single" if cell.get("underline") else None,
-                        color=font_color
+                        color=font_color,
                     )
 
                     # Handle background color
                     if cell.get("bg"):
                         bg_color = convert_to_argb(cell.get("bg"))
                         excel_cell.fill = PatternFill(
-                            start_color=bg_color,
-                            end_color=bg_color,
-                            fill_type="solid"
+                            start_color=bg_color, end_color=bg_color, fill_type="solid"
                         )
-    
+
     # table range
     from openpyxl.utils import get_column_letter
 
@@ -589,7 +596,7 @@ def download_excel_view(request, file_id):
     style_map = {
         "light": "TableStyleLight9",
         "medium": "TableStyleMedium9",
-        "dark": "TableStyleDark2"
+        "dark": "TableStyleDark2",
     }
 
     table_style = style_map.get(style)
@@ -599,7 +606,7 @@ def download_excel_view(request, file_id):
         showFirstColumn=False,
         showLastColumn=False,
         showRowStripes=True,
-        showColumnStripes=False
+        showColumnStripes=False,
     )
 
     if table_style:
@@ -608,13 +615,13 @@ def download_excel_view(request, file_id):
             showFirstColumn=False,
             showLastColumn=False,
             showRowStripes=True,
-            showColumnStripes=False
+            showColumnStripes=False,
         )
         table.tableStyleInfo = style_info
 
     ws.add_table(table)
     # make header bold
-    
+
     for col in ws.columns:
         max_length = 0
         col_letter = col[0].column_letter
@@ -629,19 +636,26 @@ def download_excel_view(request, file_id):
         ws.column_dimensions[col_letter].width = max_length + 2
     # save
     from io import BytesIO
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    
+
     response = HttpResponse(
         output,
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    filename = uploaded_file.file.name.split("/")[-1].replace(".csv", "").replace(".xlsx", "")
-    response["Content-Disposition"] = f'attachment; filename="{filename}_processed.xlsx"'
+    filename = (
+        uploaded_file.file.name.split("/")[-1].replace(".csv", "").replace(".xlsx", "")
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="{filename}_processed.xlsx"'
+    )
 
     return response
+
+
 @login_required
 def preview_excel_view(request, file_id):
     if request.user.is_staff:
@@ -659,7 +673,6 @@ def preview_excel_view(request, file_id):
     df = preprocess_dataframe(df)
     df = remove_empty_unnamed_columns(df)
 
-    
     df.columns = [str(col).replace("_", " ").title() for col in df.columns]
 
     # auto width simulation (important)
@@ -670,15 +683,15 @@ def preview_excel_view(request, file_id):
     html = '<table class="excel-table">'
 
     # HEADER
-    html += '<thead><tr>'
+    html += "<thead><tr>"
     for col in df.columns:
-        html += f'<th>{col}</th>'
-    html += '</tr></thead><tbody>'
+        html += f"<th>{col}</th>"
+    html += "</tr></thead><tbody>"
 
     # ROWS
     for i, row in enumerate(df.values):
-        html += '<tr>'
-    
+        html += "<tr>"
+
         for j, val in enumerate(row):
             style_attr = ""
 
@@ -701,11 +714,11 @@ def preview_excel_view(request, file_id):
 
                     style_attr = f' style="{";".join(styles)}"'
 
-            html += f'<td{style_attr}>{val}</td>'
+            html += f"<td{style_attr}>{val}</td>"
 
-        html += '</tr>'
+        html += "</tr>"
 
-    html += '</tbody></table>'
+    html += "</tbody></table>"
 
     table_html = html
 
@@ -718,37 +731,44 @@ def workbook_list_view(request):
     return render(request, "workbook_list.html", {"files": files})
 
 
-
 @login_required
 def workbook_editor_view(request, file_id):
     uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
     template = uploaded_file.template
     file_path = uploaded_file.file.path
-    
+
     # Get domain columns
-    val_cols = list(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
-    form_cols = list(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
+    val_cols = list(
+        ValidationRule.objects.filter(template=template).values_list(
+            "column_name", flat=True
+        )
+    )
+    form_cols = list(
+        FormulaRule.objects.filter(template=template).values_list(
+            "target_column", flat=True
+        )
+    )
     db_columns = list(set(val_cols + form_cols))
-    
+
     # Smart normalization function
     def normalize(col):
         col = str(col).lower()
-        col = re.sub(r'[ _()%\.\-/]', '', col)
+        col = re.sub(r"[ _()%\.\-/]", "", col)
         return col
-    
+
     def find_matching_db_column(file_col, db_columns):
         file_norm = normalize(file_col)
         for db_col in db_columns:
             db_norm = normalize(db_col)
-        
+
             if file_norm == db_norm:
                 return db_col
-        
-        # Partial match (no length restriction)
+
+            # Partial match (no length restriction)
             if db_norm in file_norm or file_norm in db_norm:
                 return db_col
-        
-        # Specific rules
+
+            # Specific rules
             if "attendance" in db_norm and "attendance" in file_norm:
                 return db_col
             if "quiz" in db_norm and "quiz" in file_norm:
@@ -762,96 +782,108 @@ def workbook_editor_view(request, file_id):
             if "total" in db_norm and "total" in file_norm:
                 return db_col
         return None
+
     # Load saved column mappings
-    saved_mappings = getattr(uploaded_file, 'column_mappings', {})
-    
+    saved_mappings = getattr(uploaded_file, "column_mappings", {})
+
     try:
-        if file_path.endswith('.csv'):
+        if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
         else:
             df = pd.read_excel(file_path)
-        
+
         # ===== ADD THESE LINES FOR PROPER CLEANING =====
         df = preprocess_dataframe(df)
         df = remove_empty_unnamed_columns(df)
         # Remove fully empty rows
-        df = df.dropna(how='all')
+        df = df.dropna(how="all")
         df = df.reset_index(drop=True)
         # ===============================================
-        
+
         user_columns_original = list(df.columns)
-        
+
         # Build columns_with_classes with pre-selected mapping
         columns_with_classes = []
-        
+
         for col in user_columns_original:
             matched_db = find_matching_db_column(col, db_columns)
             print(f"DEBUG: Column '{col}' -> matched_db: {matched_db}")  # ADD THIS LINE
             print(f"DEBUG: db_columns list: {db_columns}")
             if matched_db:
-                columns_with_classes.append({
-                    'name': col, 
-                    'class': 'header-matched',
-                    'matched_db': matched_db
-                })
+                columns_with_classes.append(
+                    {"name": col, "class": "header-matched", "matched_db": matched_db}
+                )
             else:
-                columns_with_classes.append({
-                    'name': col, 
-                    'class': 'header-custom',
-                    'matched_db': None
-                })
-        
+                columns_with_classes.append(
+                    {"name": col, "class": "header-custom", "matched_db": None}
+                )
+
         # Add missing domain columns (only if no saved mappings)
         if not saved_mappings:
-            matched_cols = [c['matched_db'] for c in columns_with_classes if c['matched_db']]
+            matched_cols = [
+                c["matched_db"] for c in columns_with_classes if c["matched_db"]
+            ]
             for db_col in db_columns:
                 if db_col not in matched_cols and db_col not in df.columns:
                     df[db_col] = "-"
-                    columns_with_classes.append({
-                        'name': db_col, 
-                        'class': 'header-template-only',
-                        'matched_db': None
-                    })
-        
-        current_columns = [c['name'] for c in columns_with_classes]
+                    columns_with_classes.append(
+                        {
+                            "name": db_col,
+                            "class": "header-template-only",
+                            "matched_db": None,
+                        }
+                    )
+
+        current_columns = [c["name"] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
-        
+
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return HttpResponse(f"Error loading file: {e}")
-    
+
     saved_mappings_json = json.dumps(saved_mappings)
-    
-    return render(request, "workbook_editor.html", {
-        "file": uploaded_file,
-        "current_columns": current_columns,
-        "columns_with_classes": columns_with_classes,
-        "db_columns": db_columns,
-        "user_columns": user_columns_original,
-        "preview_data": preview_data,
-        "saved_mappings_json": saved_mappings_json,
-    })
+
+    return render(
+        request,
+        "workbook_editor.html",
+        {
+            "file": uploaded_file,
+            "current_columns": current_columns,
+            "columns_with_classes": columns_with_classes,
+            "db_columns": db_columns,
+            "user_columns": user_columns_original,
+            "preview_data": preview_data,
+            "saved_mappings_json": saved_mappings_json,
+        },
+    )
+
+
 @csrf_exempt
 @login_required
 def save_workbook_data(request, file_id):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            headers = data.get('headers')
-            rows = data.get('rows')
-            mappings = data.get('mappings', {})
-            
+            headers = data.get("headers")
+            rows = data.get("rows")
+            mappings = data.get("mappings", {})
+
             # 1. Get the original file
-            original_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
-            
+            original_file = get_object_or_404(
+                UploadedFile, id=file_id, user=request.user
+            )
+
             # 2. Prevent Pandas Crash: Check for duplicate mapped columns
             if len(headers) != len(set(headers)):
                 seen = set()
                 for i, h in enumerate(headers):
                     if h in seen:
-                        headers[i] = f"{h}_{i}" # Rename duplicates (e.g., Name_1, Name_2)
+                        headers[i] = (
+                            f"{h}_{i}"  # Rename duplicates (e.g., Name_1, Name_2)
+                        )
                     seen.add(h)
 
             # 3. Create DataFrame
@@ -873,31 +905,33 @@ def save_workbook_data(request, file_id):
             df = remove_empty_unnamed_columns(df)
             # 4. Generate new filename
             original_name = os.path.basename(original_file.file.name)
-            name_part = original_name.replace('.csv', '').replace('.xlsx', '')
+            name_part = original_name.replace(".csv", "").replace(".xlsx", "")
             new_filename = f"{name_part}_edited.xlsx"
-            
+
             # 5. Save to memory safely
             output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl') # Force openpyxl engine
+            df.to_excel(output, index=False, engine="openpyxl")  # Force openpyxl engine
             output.seek(0)
-            
+
             # 6. FIX: Create BRAND NEW object WITHOUT column_mappings in the arguments
             new_uploaded_file = UploadedFile(
                 user=request.user,
                 template=original_file.template,
                 status="Completed",
-                processed_time=timezone.now()
+                processed_time=timezone.now(),
             )
             new_uploaded_file.style_data = style_data
             new_uploaded_file.column_mappings = mappings
-            
+
             # 7. Save the physical file (This also automatically saves the database record)
             new_uploaded_file.file.save(new_filename, ContentFile(output.read()))
-            
-            return JsonResponse({"status": "success", "new_file_id": new_uploaded_file.id})
+
+            return JsonResponse(
+                {"status": "success", "new_file_id": new_uploaded_file.id}
+            )
 
         except Exception as e:
             print(f" CRITICAL ERROR SAVING WORKBOOK: {str(e)}")
             return JsonResponse({"status": "failed", "error": str(e)}, status=500)
-            
+
     return JsonResponse({"status": "failed"}, status=400)
