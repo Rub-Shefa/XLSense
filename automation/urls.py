@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from . import editor_views
 from .views import download_excel_view
 
 urlpatterns = [
@@ -27,10 +28,8 @@ urlpatterns = [
     # AI Explain
     path("ai-explain/", views.ai_explain_view, name="ai_explain"),
     path("editor/", views.workbook_list_view, name="workbook_list"),
-    path("editor/<int:file_id>/", views.workbook_editor_view, name="workbook_editor"),
-    path(
-        "save-workbook/<int:file_id>/", views.save_workbook_data, name="save_workbook"
-    ),
+    path('editor/<int:file_id>/', editor_views.workbook_editor_view, name='workbook_editor'),
+    path('editor/<int:file_id>/save/', editor_views.save_workbook_data, name='save_workbook'),
 ]
 urlpatterns += [
     path("download/<int:file_id>/", download_excel_view, name="download_excel"),

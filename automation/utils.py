@@ -232,3 +232,33 @@ def generate_ai_explanation(
         )
 
     return explanation.strip(), False
+
+def preprocess_dataframe(df):
+    # clean column names
+    df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
+
+    # replace empty strings with NaN
+    df.replace(r"^\s*$", pd.NA, regex=True, inplace=True)
+
+    # trim values
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].astype(str).str.strip()
+            df[col] = df[col].replace("nan", pd.NA)
+
+    # remove fully empty rows
+    df = df.dropna(how="all")
+
+    # remove rows with only 1 value
+    df = df[df.count(axis=1) > 1]
+
+    df = df.reset_index(drop=True)
+
+    return df
+
+
+def remove_empty_unnamed_columns(df):
+    return df.loc[:, ~(
+        df.columns.astype(str).str.lower().str.contains("unnamed") &
+        (df.isna().sum() == len(df))
+    )]
