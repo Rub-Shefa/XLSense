@@ -10,7 +10,9 @@ Intelligent Data Workflow and Spreadsheet Automation Platform. Upload `.xlsx` or
 - **Formula Auditing** — Verifies existing formulas and recommends new ones based on your data
 - **Data Quality Scoring** — Assigns a quality score to each uploaded file based on validation results
 - **AI Explanations** — Generates plain-language explanations for formulas and corrections via OpenAI-compatible API
+- **Workbook Editor** — Edit spreadsheets with smart column mapping, fuzzy column detection, and style preservation
 - **Structured Excel Output** — Produces clean, formatted `.xlsx` files with results and explanations
+- **Theme Toggle** — Light and dark mode themes
 - **Audit Trail** — Logs all user actions for compliance and history tracking
 - **Role-Based Access** — Admin and User roles with separate dashboards and permissions
 
@@ -23,7 +25,8 @@ Intelligent Data Workflow and Spreadsheet Automation Platform. Upload `.xlsx` or
 | Data Processing | pandas, openpyxl |
 | AI Integration | OpenAI-compatible API |
 | Frontend | HTML, CSS, JavaScript (Django templates) |
-| Testing | pytest, pytest-django, Playwright |
+| Testing | pytest, pytest-django, pytest-cov, Playwright |
+| Linting | ruff |
 
 ## Project Structure
 
@@ -31,14 +34,16 @@ Intelligent Data Workflow and Spreadsheet Automation Platform. Upload `.xlsx` or
 XLSense/
 ├── automation/          # Main Django app (models, views, utils, forms, selectors, urls)
 ├── XLSense/             # Django project settings and config
-├── templates/           # HTML templates (upload, dashboard, report, etc.)
-├── tests/               # pytest test suite
+├── templates/           # HTML templates (upload, dashboard, report, editor, etc.)
+├── tests/               # pytest test suite (8 test files)
 ├── test_files/          # Sample CSV files for each domain (academic, hr, finance, inventory)
 ├── docs/                # PRD, ERD, requirements, NFRs
 ├── database/            # SQL schema dump
+├── static/              # Static files (CSS, SVG icons)
+├── uploads/             # Uploaded files directory
 ├── manage.py            # Django management CLI
-├── requirements.txt     # Python dependencies
-└── .env.example         # Environment variable template
+├── requirements.txt    # Python dependencies
+└── .env.example        # Environment variable template
 ```
 
 ## Prerequisites
@@ -96,7 +101,7 @@ Edit `.env` with your values:
 DATABASE_PASSWORD=""                          # Leave empty for XAMPP default
 AI_API_URL="https://api.openai.com/v1/chat/completions"
 AI_API_KEY="your-api-key"
-AI_MODEL="gpt-5.4"
+AI_MODEL="gpt-4o"
 ```
 
 ### 6. Run migrations
@@ -105,13 +110,40 @@ AI_MODEL="gpt-5.4"
 python manage.py migrate
 ```
 
-### 7. Start the development server
+### 7. Create superuser (optional)
+
+```bash
+python manage.py createsuperuser
+```
+
+### 8. Start the development server
 
 ```bash
 python manage.py runserver
 ```
 
 Visit `http://127.0.0.1:8000/` in your browser.
+
+## URL Routes
+
+| Path | Description |
+|------|------------|
+| `/` | Homepage |
+| `/login/` | User login |
+| `/register/` | User registration |
+| `/logout/` | User logout |
+| `/dashboard/` | User dashboard |
+| `/admin/` | Admin dashboard |
+| `/system-stats/` | System statistics |
+| `/upload/` | File upload with domain selection |
+| `/history/` | Upload history |
+| `/report/<file_id>/` | Validation report |
+| `/manage-templates/` | Domain template management |
+| `/ai-explain/` | AI formula explanations |
+| `/editor/` | Workbook editor list |
+| `/editor/<file_id>/` | Workbook editor |
+| `/preview/<file_id>/` | Excel table preview |
+| `/download/<file_id>/` | Download formatted Excel |
 
 ## Testing
 
@@ -124,14 +156,26 @@ pytest
 Run with coverage:
 
 ```bash
-pytest --cov=automation
+pytest --cov=automation --cov-report=term-missing
 ```
 
 Run a specific test file:
 
 ```bash
-pytest tests/test_utils.py
 pytest tests/test_views.py
+pytest tests/test_utils.py
+```
+
+Run linting:
+
+```bash
+ruff check .
+```
+
+Run formatting:
+
+```bash
+ruff format .
 ```
 
 Sample test data is provided in `test_files/` with valid, invalid, and boundary-case CSVs for each domain.
