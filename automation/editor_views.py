@@ -121,6 +121,10 @@ def workbook_editor_view(request, file_id):
 
     saved_mappings_json = json.dumps(saved_mappings)
 
+    style_data = getattr(uploaded_file, "style_data", [])
+    if not style_data: style_data = []
+    style_data_json = json.dumps(style_data)
+
     return render(
         request,
         "workbook_editor.html",
@@ -132,6 +136,7 @@ def workbook_editor_view(request, file_id):
             "user_columns": user_columns_original,
             "preview_data": preview_data,
             "saved_mappings_json": saved_mappings_json,
+            "style_data_json": style_data_json,
         },
     )
 

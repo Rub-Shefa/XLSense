@@ -12,121 +12,363 @@
             <h1>Workbook Editor</h1>
             <p class="stats-mini">Select a file to begin domain mapping and data cleaning.</p>
         </div>
+        <div class="header-right">
+            <a href="{% url 'upload_file' %}" class="btn-new-upload">+ Upload New File</a>
+        </div>
     </div>
 
-    <h3 style="color: var(--color-text); margin-bottom: 15px; font-size: 18px;">Original Uploads (Needs Mapping)</h3>
-    <div class="history-card-box" style="margin-bottom: 40px;">
-        <table class="history-data-table">
-            <thead>
-                <tr>
-                    <th>Filename</th>
-                    <th>Selected Domain</th>
-                    <th>Status</th>
-                    <th>Upload Time</th>
-                    <th class="text-center">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for file in files %}
-                {% if not file.column_mappings and "_edited" not in file.file.name %}
-                <tr class="history-data-row">
-                    <td class="filename-cell">
-                        <span class="file-icon">📊</span>
-                        {{ file.file.name|cut:"uploads/" }}
-                    </td>
-                    <td>
-                        <span class="domain-badge">
-                            {{ file.template.domain_type|default:"General" }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="status-pill status-success">● {{ file.status }}</span>
-                    </td>
-                    <td class="date-cell">
-                        {{ file.upload_time|date:"M d, Y H:i" }}
-                    </td>
-                    <td class="text-center">
-                        <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor">✏️ Open Editor</a>
-                    </td>
-                </tr>
-                {% endif %}
-                {% empty %}
-                <tr>
-                    <td colspan="5" class="empty-state-cell">
-                        <p>No files uploaded yet. Go to "Upload File" first.</p>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <!-- Original Uploads Section -->
+    <div class="section-header">
+        <h3>📄 Original Uploads <span class="section-badge">Needs Mapping</span></h3>
+        <p class="section-desc">Files that haven't been mapped to database fields yet.</p>
     </div>
-
-    <h3 style="color: var(--color-text); margin-bottom: 15px; font-size: 18px;">Edited Workbooks (Saved & Mapped)</h3>
     <div class="history-card-box">
-        <table class="history-data-table">
-            <thead>
-                <tr>
-                    <th>Filename</th>
-                    <th>Selected Domain</th>
-                    <th>Status</th>
-                    <th>Last Modified</th>
-                    <th class="text-center">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for file in files %}
-                {% if file.column_mappings or "_edited" in file.file.name %}
-                <tr class="history-data-row">
-                    <td class="filename-cell">
-                        <span class="file-icon">📊</span>
-                        {{ file.file.name|cut:"uploads/" }}
-                    </td>
-                    <td>
-                        <span class="domain-badge">
-                            {{ file.template.domain_type|default:"General" }}
-                        </span>
-                    </td>
-                    <td>
-                        <span class="status-pill status-success">● {{ file.status }}</span>
-                    </td>
-                    <td class="date-cell">
-                        {{ file.processed_time|date:"M d, Y H:i" }}
-                    </td>
-                    <td class="text-center">
-                        <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor">✏️ View Edited File</a>
-                    </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
+    <table class="history-data-table">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Domain</th>
+                <th>Status</th>
+                <th>Upload Time</th>
+                <th class="text-center">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in original_files %}
+            <tr class="history-data-row">
+                <td class="filename-cell">
+                    <span class="file-icon">📊</span>
+                    {{ file.file.name|cut:"uploads/" }}
+                </td>
+                <td><span class="domain-badge">{{ file.template.domain_type|default:"General" }}</span></td>
+                <td><span class="status-pill status-success">● {{ file.status }}</span></td>
+                <td class="date-cell">
+                    <span class="d-text">{{ file.upload_time|date:"M d, Y" }}</span>
+                    <span class="t-text">{{ file.upload_time|date:"H:i" }}</span>
+                </td>
+                <td class="text-center">
+                    <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor">✏️ Open Editor</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="empty-state-cell">
+                    <div class="empty-content">
+                        <img src="https://cdn-icons-png.flaticon.com/512/7486/7486744.png" alt="No files">
+                        <p>No original uploads found.<br>Start by uploading a new file.</p>
+                        <a href="{% url 'upload_file' %}" class="btn-new-upload small">Upload Now</a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+    <!-- Edited Workbooks Section -->
+    <div class="section-header" style="margin-top: 40px;">
+        <h3>✏️ Edited Workbooks <span class="section-badge">Saved & Mapped</span></h3>
+        <p class="section-desc">Files with completed mapping and processing.</p>
     </div>
+    <div class="history-card-box">
+    <table class="history-data-table">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Domain</th>
+                <th>Status</th>
+                <th>Last Modified</th>
+                <th class="text-center">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in edited_files %}
+            <tr class="history-data-row">
+                <td class="filename-cell">
+                    <span class="file-icon">📊</span>
+                    {{ file.file.name|cut:"uploads/" }}
+                </td>
+                <td><span class="domain-badge">{{ file.template.domain_type|default:"General" }}</span></td>
+                <td><span class="status-pill status-success">● {{ file.status }}</span></td>
+                <td class="date-cell">
+                    <span class="d-text">{{ file.processed_time|date:"M d, Y" }}</span>
+                    <span class="t-text">{{ file.processed_time|date:"H:i" }}</span>
+                </td>
+                <td class="text-center">
+                    <a href="{% url 'workbook_editor' file.id %}" target="_blank" class="btn-open-editor secondary">👁️ View Edited File</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="empty-state-cell">
+                    <div class="empty-content">
+                        <img src="https://cdn-icons-png.flaticon.com/512/7486/7486744.png" alt="No edited files">
+                        <p>No edited workbooks yet.<br>Open a file from the section above to start mapping.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 </div>
 
 <style>
-    .history-page-wrapper { padding: 30px; max-width: 1200px; margin: 0 auto; font-family: 'Segoe UI', sans-serif; }
-    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-    .history-header h1 { font-size: 20px; color: var(--color-text); font-weight: 700; }
-    .stats-mini { color: var(--color-text-muted); font-size: 14px; }
-    .history-card-box { background: var(--color-surface); border-radius: 10px; box-shadow: var(--shadow); border: 1px solid var(--color-border); overflow: hidden; }
-    .history-data-table { width: 100%; border-collapse: collapse; }
-    .history-data-table th { background: var(--color-bg); padding: 14px 18px; font-size: 11px; text-transform: uppercase; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); text-align: left;}
-    .history-data-table td { padding: 14px 18px; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-    .domain-badge { background: rgba(102,126,234,0.15); color: var(--color-accent); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .status-pill { padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; }
-    .status-success { background: rgba(39,174,96,0.15); color: #27ae60; }
-    
+    /* ===== GLOBAL ===== */
+    .history-page-wrapper {
+        padding: 30px;
+        max-width: 1300px;
+        margin: 0 auto;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Header */
+    .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .history-header h1 {
+        font-size: 26px;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--color-text), var(--color-accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin: 0;
+    }
+    .stats-mini {
+        color: var(--color-text-muted);
+        font-size: 14px;
+        margin-top: 6px;
+    }
+
+    /* Section Headers */
+    .section-header {
+        margin-bottom: 18px;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+    }
+    .section-header h3 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--color-text);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .section-badge {
+        background: rgba(102,126,234,0.2);
+        color: var(--color-accent);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 40px;
+        letter-spacing: 0.3px;
+    }
+    .section-desc {
+        color: var(--color-text-muted);
+        font-size: 13px;
+        margin: 0;
+    }
+
+    /* Cards */
+    .history-card-box {
+        background: var(--color-surface);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+        transition: all 0.2s ease;
+    }
+
+    /* Tables - fully theme-aware */
+    .history-data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .history-data-table th,
+    .history-data-table td {
+        border: none;
+        border-bottom: 1px solid var(--color-border);
+        padding: 14px 20px;
+        text-align: left;
+        vertical-align: middle;
+    }
+    .history-data-table th {
+        background: var(--color-table-header, #f1f5f9);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--color-text);
+        border-bottom: 2px solid var(--color-border);
+    }
+    .history-data-table td {
+        background: var(--color-surface);
+        color: var(--color-text);
+        font-size: 14px;
+    }
+    .history-data-row:hover td {
+        background-color: rgba(102,126,234,0.08);
+    }
+    .history-data-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* File icon + name */
+    .filename-cell {
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .file-icon {
+        font-size: 20px;
+        opacity: 0.7;
+    }
+
+    /* Domain badge */
+    .domain-badge {
+        background: rgba(102,126,234,0.15);
+        color: var(--color-accent);
+        padding: 5px 12px;
+        border-radius: 40px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    /* Status pills */
+    .status-pill {
+        padding: 5px 12px;
+        border-radius: 40px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .status-success {
+        background: rgba(39,174,96,0.12);
+        color: #2ecc71;
+    }
+
+    /* Date formatting */
+    .date-cell {
+        font-size: 13px;
+    }
+    .d-text {
+        font-weight: 500;
+    }
+    .t-text {
+        color: var(--color-text-muted);
+        font-size: 11px;
+        margin-left: 6px;
+    }
+
+    /* Action Buttons */
     .btn-open-editor {
         background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
         color: white !important;
-        padding: 8px 16px;
-        border-radius: 6px;
+        padding: 8px 18px;
+        border-radius: 40px;
         text-decoration: none;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
-        transition: all 0.3s ease;
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.25s ease;
+        box-shadow: 0 2px 6px rgba(102,126,234,0.2);
+        border: none;
     }
-    .btn-open-editor:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+    .btn-open-editor:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 18px rgba(102,126,234,0.3);
+        filter: brightness(1.02);
+    }
+    .btn-open-editor.secondary {
+        background: transparent;
+        border: 1px solid var(--color-accent);
+        color: var(--color-accent) !important;
+        box-shadow: none;
+    }
+    .btn-open-editor.secondary:hover {
+        background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+        color: white !important;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 18px rgba(102,126,234,0.3);
+        border-color: transparent;
+    }
+
+    /* Upload button */
+    .btn-new-upload {
+        background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+        color: white !important;
+        padding: 10px 24px;
+        border-radius: 40px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+        box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+    }
+    .btn-new-upload:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 22px rgba(118,75,162,0.4);
+        filter: brightness(1.05);
+    }
+    .btn-new-upload.small {
+        padding: 6px 16px;
+        font-size: 12px;
+        margin-top: 12px;
+    }
+
+    /* Empty State - Centered */
+    .empty-state-cell {
+        padding: 60px 20px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+    }
+    .empty-content {
+        display: inline-block;
+        text-align: center;
+        width: 100%;
+    }
+    .empty-content img {
+        width: 80px;
+        opacity: 0.35;
+        margin-bottom: 20px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    /* Slight adjustment for dark mode so image isn't too bright */
+    [data-theme="dark"] .empty-content img {
+        filter: brightness(0.8);
+    }
+    .empty-content p {
+    color: var(--color-text-muted);
+    font-size: 15px;
+    margin-bottom: 20px;
+    font-style: italic;  
+}
+    .text-center {
+        text-align: center;
+    }
 </style>
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 {% endblock %}

@@ -1,0 +1,228 @@
+   /* ==========================================================================
+   1. BASE & RESETS
+   ========================================================================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    background: #e9eef3;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #1e2a3a;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #eef2f6; border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: #bcd0e0; border-radius: 8px; }
+
+/* ==========================================================================
+   2. TOP RIBBON & BRANDING
+   ========================================================================== */
+.excel-ribbon {
+    background: #ffffff;
+    border-bottom: 1px solid #dce5ec;
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+    z-index: 100;
+    overflow: visible !important; /* Fixed for dropdowns */
+}
+
+.logo-area { display: flex; align-items: center; gap: 12px; }
+
+.logo-icon {
+    background: #1e6f3f;
+    width: 36px; height: 36px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 1.3rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.file-name {
+    font-weight: 600; font-size: 0.9rem;
+    background: #f2f5f9; padding: 6px 14px;
+    border-radius: 40px; color: #1e4663;
+    display: flex; align-items: center; gap: 8px;
+}
+
+.ribbon-actions { display: flex; gap: 12px; align-items: center; }
+
+.btn-excel {
+    background: white; border: 1px solid #cfdee9;
+    padding: 8px 18px; border-radius: 40px;
+    font-weight: 500; font-size: 0.8rem;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    transition: 0.2s;
+}
+.btn-excel:hover { background: #f4f9ff; border-color: #1e6f3f; transform: translateY(-1px); }
+
+.btn-primary-save { background: #1e6f3f; border: none; color: white; }
+.btn-primary-save:hover { background: #0f5a34; }
+
+/* ==========================================================================
+   3. FORMATTING TOOLBAR & BUTTONS
+   ========================================================================== */
+.format-toolbar {
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 6px 20px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    overflow: visible !important; /* Fixed for dropdowns */
+}
+
+.tool-group {
+    display: flex; gap: 4px;
+    border-right: 1px solid #e2e8f0;
+    padding-right: 12px; margin-right: 6px;
+    overflow: visible !important; /* Fixed for dropdowns */
+}
+
+.tool-btn {
+    background: transparent; border: none;
+    padding: 6px 10px; border-radius: 6px;
+    cursor: pointer; font-size: 0.9rem; color: #2c3e4e;
+}
+.tool-btn:hover { background: #eef2f7; }
+
+.toolbar-divider {
+    width: 1px; height: 24px;
+    background-color: #ccc; margin: 0 6px;
+}
+
+/* ==========================================================================
+   4. CUSTOM DROPDOWNS & COLOR PICKERS (NEW)
+   ========================================================================== */
+.custom-dropdown {
+    position: relative; display: inline-block;
+    font-size: 13px; user-select: none;
+}
+
+.dropdown-selected {
+    padding: 4px 8px; border: 1px solid #ccc;
+    background: #fff; cursor: pointer; border-radius: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.dropdown-selected:hover { border-color: #107c41; background: #f3f2f1; }
+
+.dropdown-menu {
+    display: none; position: absolute; top: 100%; left: 0;
+    background: #fff; border: 1px solid #ccc;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 99999 !important; /* Forces dropdown on top of everything */
+    max-height: 250px; overflow-y: auto; width: max-content;
+}
+.custom-dropdown.active .dropdown-menu { display: block !important; }
+
+.dropdown-menu div[data-val] { padding: 6px 10px; cursor: pointer; }
+.dropdown-menu div[data-val]:hover { background: #e1dfdd; }
+
+/* Color Grid Styles */
+.color-dropdown .dropdown-selected { border: none; background: transparent; padding: 4px; }
+.color-dropdown .dropdown-selected:hover { border: 1px solid #ccc; }
+.color-icon { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.color-indicator { width: 14px; height: 4px; }
+
+.palette-menu { padding: 8px; width: 160px; }
+.palette-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; margin-bottom: 8px; }
+.color-swatch { width: 20px; height: 20px; border: 1px solid #ccc; cursor: pointer; }
+.color-swatch:hover { border: 1px solid #000; transform: scale(1.1); }
+
+.more-colors { text-align: center; padding: 6px; border-top: 1px solid #ccc; cursor: pointer; font-size: 12px; }
+.more-colors:hover { background: #f3f2f1; }
+
+/* ==========================================================================
+   5. FORMULA BAR
+   ========================================================================== */
+.formula-bar {
+    background: #ffffff; border-bottom: 1px solid #e2e8f0;
+    padding: 8px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+
+.fx-label {
+    background: #f1f5f9; padding: 6px 14px; border-radius: 28px;
+    font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 6px;
+}
+
+.cell-ref {
+    background: #eef2f7; border-radius: 20px; padding: 4px 14px;
+    font-family: monospace; font-size: 0.8rem; font-weight: 600;
+}
+
+.fx-input {
+    flex: 1; border: 1px solid #dce5ec; border-radius: 28px;
+    padding: 8px 16px; font-family: 'Inter', monospace; font-size: 0.85rem; outline: none;
+}
+.fx-input:focus { border-color: #1e6f3f; box-shadow: 0 0 0 3px rgba(30,111,63,0.1); }
+
+.func-buttons { display: flex; gap: 6px; }
+.func-btn {
+    background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 20px;
+    padding: 4px 12px; font-size: 0.7rem; font-weight: 600; cursor: pointer;
+}
+.func-btn:hover { background: #e6edf4; }
+
+/* ==========================================================================
+   6. SPREADSHEET GRID & CELLS
+   ========================================================================== */
+.grid-container {
+    flex: 1; overflow: auto; background: #f8fafd;
+    padding: 0; position: relative;
+}
+
+.excel-table {
+    border-collapse: collapse; font-family: 'Inter', monospace;
+    font-size: 0.8rem; min-width: 100%; background: white;
+}
+
+.excel-table th, .excel-table td { border: 1px solid #e2e8f0; padding: 0; }
+.excel-table th { background: #f9fbfd; font-weight: 600; position: sticky; top: 0; z-index: 20; min-width: 160px; }
+.excel-table td { padding: 8px 12px; background: white; outline: none; }
+.excel-table td:focus { background: #fffae6; border: 2px solid #1e6f3f; }
+
+.cell-active { background-color: #fff3cf !important; box-shadow: inset 0 0 0 2px #f5b042; }
+.row-header-cell { background: #f8fafc; text-align: center; width: 55px; position: sticky; left: 0; z-index: 10; }
+
+.row-delete-btn { background: none; border: none; cursor: pointer; color: #bac8d9; }
+.row-delete-btn:hover { color: #e03a3a; }
+.del-col { position: absolute; top: 5px; right: 8px; background: none; border: none; cursor: pointer; color: #9aaebf; }
+.del-col:hover { color: #d13438; }
+
+/* ==========================================================================
+   7. DYNAMIC HEADERS & MAPPING
+   ========================================================================== */
+.header-matched { background: linear-gradient(135deg, #eafaf1, #dcfce7) !important; border-top: 3px solid #1e6f3f !important; }
+.header-template-only { background: linear-gradient(135deg, #eff6ff, #e6f0ff) !important; border-top: 3px solid #2c7be5 !important; }
+.header-custom { background: linear-gradient(135deg, #fff6f0, #ffefe5) !important; border-top: 3px solid #d13438 !important; }
+
+.header-content { padding: 12px 8px 8px 8px; position: relative; display: flex; flex-direction: column; gap: 8px; }
+
+.header-label {
+    font-weight: 700; font-size: 0.75rem; text-transform: uppercase;
+    background: transparent; padding: 4px 6px; border-radius: 8px;
+    outline: none; color: #1e3a5f;
+}
+.header-label:focus { background: white; box-shadow: 0 0 0 2px #1e6f3f; }
+
+.mapping-select {
+    font-size: 0.7rem; padding: 5px 8px; border-radius: 20px;
+    border: 1px solid #cbdde9; background: white; font-weight: 500; cursor: pointer;
+}
+
+/* ==========================================================================
+   8. MISC / STATUS BAR
+   ========================================================================== */
+.status-bar {
+    background: #ffffff; border-top: 1px solid #e2edf2;
+    padding: 8px 24px; display: flex; justify-content: space-between;
+    font-size: 0.7rem; font-weight: 500; color: #3c5a7a;
+}
