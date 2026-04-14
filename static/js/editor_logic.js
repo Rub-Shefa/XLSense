@@ -42,11 +42,14 @@ function captureState() {
 }
 
 function restoreState(state) {
+    if (!state) return;
     ignoreNextSave = true;
+    
     const headerRow = document.getElementById('headerRow');
     const rowHeaderCell = headerRow.querySelector('.row-header-cell'); 
     
-    let newHeaderHtml = rowHeaderCell.outerHTML; 
+    // Safely get the header HTML in case it gets lost
+    let newHeaderHtml = rowHeaderCell ? rowHeaderCell.outerHTML : ''; 
     state.headers.forEach(h => { newHeaderHtml += h.outerHTML; });
     headerRow.innerHTML = newHeaderHtml; 
 
@@ -213,8 +216,11 @@ function setActiveCell(cell) {
             backgroundColor: activeCell.style.backgroundColor || style.backgroundColor,
             color: activeCell.style.color || style.color
         };
-        document.querySelector('#fontDropdown .dropdown-selected').innerText = originalState.fontFamily.split(',')[0].replace(/['"]/g, '');
-        document.querySelector('#sizeDropdown .dropdown-selected').innerText = originalState.fontSize.replace('px', '');
+        
+        const fontDropdown = document.querySelector('#fontDropdown .dropdown-selected');
+        const sizeDropdown = document.querySelector('#sizeDropdown .dropdown-selected');
+        if(fontDropdown) fontDropdown.innerText = originalState.fontFamily.split(',')[0].replace(/['"]/g, '');
+        if(sizeDropdown) sizeDropdown.innerText = originalState.fontSize.replace('px', '');
     } else {
         document.getElementById('activeCellRef').innerText = '';
         document.getElementById('formulaInput').value = '';
@@ -222,11 +228,11 @@ function setActiveCell(cell) {
 }
 
 function attachCellEvents() {
+    // FIX: Using onfocus and oninput instead of addEventListener prevents duplicate firing 
+    // when the table is rebuilt by the restoreState (Undo/Redo) function.
     document.querySelectorAll('.editable-cell').forEach(cell => {
-        cell.removeEventListener('focus', () => setActiveCell(cell));
-        cell.removeEventListener('input', () => captureState());
-        cell.addEventListener('focus', () => setActiveCell(cell));
-        cell.addEventListener('input', () => captureState());
+        cell.onfocus = () => setActiveCell(cell);
+        cell.oninput = () => captureState();
     });
 }
 
@@ -345,8 +351,10 @@ function setupFormattingToolbar() {
     buildPalette('fillPaletteGrid', false);
     buildPalette('textPaletteGrid', true);
 
-    document.getElementById('nativeFillPicker').addEventListener('input', (e) => applyColor(e.target.value, false));
-    document.getElementById('nativeTextPicker').addEventListener('input', (e) => applyColor(e.target.value, true));
+    const nativeFill = document.getElementById('nativeFillPicker');
+    const nativeText = document.getElementById('nativeTextPicker');
+    if(nativeFill) nativeFill.addEventListener('input', (e) => applyColor(e.target.value, false));
+    if(nativeText) nativeText.addEventListener('input', (e) => applyColor(e.target.value, true));
 }
 
 // ==========================================
@@ -472,7 +480,6 @@ async function saveData() {
             colIndicesToKeep.forEach(idx => {
                 if (cells[idx]) {
                     const cell = cells[idx];
-                    // Replace your rowData.push block with this:
                     rowData.push({
                         value: cell.innerText.trim(),
                         bold: cell.style.fontWeight === "bold" || cell.style.fontWeight === "700",
@@ -539,7 +546,6 @@ function init() {
     if (firstCell) { firstCell.focus(); setActiveCell(firstCell); }
     captureState();
     
-    // Using the explicitly passed variables from Django HTML
     const savedMappings = window.DJANGO_VARS.savedMappings;
     if (savedMappings && Object.keys(savedMappings).length > 0) {
         document.querySelectorAll('#headerRow th:not(.row-header-cell)').forEach(th => {

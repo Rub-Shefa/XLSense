@@ -100,7 +100,7 @@ body {
 }
 
 /* ==========================================================================
-   4. CUSTOM DROPDOWNS & COLOR PICKERS (NEW)
+   4. CUSTOM DROPDOWNS & COLOR PICKERS
    ========================================================================== */
 .custom-dropdown {
     position: relative; display: inline-block;
@@ -226,3 +226,4 @@ body {
     padding: 8px 24px; display: flex; justify-content: space-between;
     font-size: 0.7rem; font-weight: 500; color: #3c5a7a;
 }
+
