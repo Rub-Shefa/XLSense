@@ -243,7 +243,8 @@ def preprocess_dataframe(df):
 
     # trim values
     for col in df.columns:
-        if df[col].dtype == "object":
+        # This works whether it's a Series or a DataFrame with one column
+        if pd.api.types.is_object_dtype(df[col]):
             df[col] = df[col].astype(str).str.strip()
             df[col] = df[col].replace("nan", pd.NA)
 
