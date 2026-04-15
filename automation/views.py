@@ -1,5 +1,6 @@
 import re
 import json
+import ast
 import os
 import time
 from unicodedata import normalize
@@ -82,7 +83,6 @@ def detect_column_types(df):
     return detected_types
 
 
-# ✅ SMART PREPROCESSING
 def preprocess_dataframe(df):
     # clean column names
     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
@@ -107,7 +107,6 @@ def preprocess_dataframe(df):
     return df
 
 
-# ✅ SAFE unnamed column remover (ONLY if empty)
 def remove_empty_unnamed_columns(df):
     return df.loc[:, ~(
         df.columns.astype(str).str.lower().str.contains("unnamed") &
@@ -516,6 +515,24 @@ def download_excel_view(request, file_id):
 
     style_data = getattr(uploaded_file, "style_data", None)
 
+    # --- TRACKER FOR DOWNLOAD ---
+    print("\n" + "="*50)
+    print("📥 STEP DOWNLOAD: Attempting to apply styles to Excel.")
+    print("Style Data exists?:", style_data is not None)
+
+    
+    if isinstance(style_data, str) and style_data.strip():
+        try:
+            # Try standard JSON first
+            style_data = json.loads(style_data)
+        except Exception:
+            try:
+                style_data = ast.literal_eval(style_data)
+            except Exception as e:
+                print(f"AST Error in Download: {e}")
+                style_data = None
+
+
     # Helper function to convert color to aRGB format
     def convert_to_argb(color_value):
         """Convert various color formats to openpyxl aRGB format (8 hex chars)"""
@@ -642,6 +659,7 @@ def download_excel_view(request, file_id):
     response["Content-Disposition"] = f'attachment; filename="{filename}_processed.xlsx"'
 
     return response
+
 @login_required
 def preview_excel_view(request, file_id):
     if request.user.is_staff:
@@ -665,7 +683,31 @@ def preview_excel_view(request, file_id):
     # auto width simulation (important)
     df = df.astype(str)
 
+    # Inside preview_excel_view
     style_data = getattr(uploaded_file, "style_data", None)
+
+    # --- STEP 4 TRACKER: LOADING FOR PREVIEW ---
+    print("\n" + "="*50)
+    print("🟢 STEP 4 (PYTHON PREVIEW): Pulled style_data from DB.")
+    print("Type pulled from DB:", type(style_data))
+    print("Raw data check:", str(style_data)[:100])
+    
+    # --- THE BULLETPROOF PARSER we added earlier ---
+    if isinstance(style_data, str) and style_data.strip():
+        try:
+            style_data = json.loads(style_data)
+            print("✅ STEP 4a: json.loads() worked!")
+        except Exception as e1:
+            print(f"⚠️ STEP 4a: json.loads() failed: {e1}")
+            try:
+                style_data = ast.literal_eval(style_data)
+                print("✅ STEP 4b: ast.literal_eval() worked!")
+            except Exception as e2:
+                print(f"❌ STEP 4b: AST failed too! Error: {e2}")
+                style_data = None
+    
+    print("Final style_data type before rendering:", type(style_data))
+    print("="*50 + "\n")
 
     html = '<table class="excel-table">'
 

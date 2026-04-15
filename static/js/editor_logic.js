@@ -3,97 +3,128 @@
 // ==========================================
 let historyStack = [];
 let redoStack = [];
-let ignoreNextSave = false;
 let activeCell = null;
 let cellFormulas = new Map();
+let lastStateJson = null; // Used to prevent duplicate history entries
 let originalState = { fontFamily: '', fontSize: '', backgroundColor: '', color: '' };
+let isRestoring = false; // Put this with your other global variables
 
 // ==========================================
 // 2. UNDO / REDO SYSTEM
 // ==========================================
+
 function captureState() {
-    if (ignoreNextSave) { ignoreNextSave = false; return; }
-    
-    const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-header-cell)')).map(th => {
-        const select = th.querySelector('.mapping-select');
-        return {
-            outerHTML: th.outerHTML,
-            text: th.querySelector('.header-label') ? th.querySelector('.header-label').innerText.trim() : '',
-            selectedValue: select ? select.value : ''
-        };
-    });
-
-    const rows = [];
-    document.querySelectorAll('#tableBody tr').forEach(tr => {
-        const rowData = [];
-        tr.querySelectorAll('td.editable-cell').forEach(td => {
-            rowData.push({
-                text: td.innerText,
-                style: td.style.cssText, // Saves all formatting!
-                formula: cellFormulas.get(td) || '' // Saves math formulas!
-            });
+    if (isRestoring) return;
+    try {
+        const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-header-cell)')).map(th => {
+            const select = th.querySelector('.mapping-select');
+            const label = th.querySelector('.header-label');
+            return {
+                outerHTML: th.outerHTML,
+                text: label ? label.innerText.trim() : '',
+                selectedValue: select ? select.value : ''
+            };
         });
-        rows.push(rowData);
-    });
 
-    historyStack.push({ headers: headers, rows: rows });
-    redoStack = [];
-    if (historyStack.length > 50) historyStack.shift();
+        const rows = [];
+        document.querySelectorAll('#tableBody tr').forEach(tr => {
+            const rowData = [];
+            tr.querySelectorAll('td.editable-cell').forEach(td => {
+                // SAFETY: Check if 'td' exists before accessing .innerText or .style
+                rowData.push({
+                    text: td ? td.innerText : '',
+                    style: td ? td.style.cssText : '',
+                    formula: (td && cellFormulas.has(td)) ? cellFormulas.get(td) : ''
+                });
+            });
+            rows.push(rowData);
+        });
+
+        const currentState = { headers: headers, rows: rows };
+        const currentStateJson = JSON.stringify(currentState);
+
+        if (currentStateJson !== lastStateJson) {
+            historyStack.push(currentState);
+            lastStateJson = currentStateJson;
+            redoStack = []; 
+            if (historyStack.length > 50) historyStack.shift(); 
+        }
+    } catch (e) {
+        console.warn("Capture state error (Caught):", e);
+    }
 }
 
 function restoreState(state) {
     if (!state) return;
-    ignoreNextSave = true;
     
-    const headerRow = document.getElementById('headerRow');
-    const rowHeaderCell = headerRow.querySelector('.row-header-cell'); 
-    
-    // Safely get the header HTML in case it gets lost
-    let newHeaderHtml = rowHeaderCell ? rowHeaderCell.outerHTML : ''; 
-    state.headers.forEach(h => { newHeaderHtml += h.outerHTML; });
-    headerRow.innerHTML = newHeaderHtml; 
+    isRestoring = true;
 
-    const selects = headerRow.querySelectorAll('.mapping-select');
-    const labels = headerRow.querySelectorAll('.header-label');
-    state.headers.forEach((h, idx) => {
-        if (selects[idx]) selects[idx].value = h.selectedValue;
-        if (labels[idx]) labels[idx].innerText = h.text;
-    });
-
-    const tbody = document.getElementById('tableBody');
-    tbody.innerHTML = '';
-    cellFormulas.clear();
-
-    state.rows.forEach((row, ri) => {
-        const tr = document.createElement('tr');
-        let html = `<td class="row-header-cell"><span style="font-size:0.7rem;">${ri+1}</span><button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button></td>`;
+    try {
+        const headerRow = document.getElementById('headerRow');
+        if (!headerRow) return;
         
-        row.forEach(cellData => { 
-            html += `<td contenteditable="true" class="editable-cell" style="${cellData.style || ''}">${escapeHtml(cellData.text)}</td>`; 
-        });
-        tr.innerHTML = html;
-        tbody.appendChild(tr);
+        // 1. Restore Headers Structure
+        const rowHeaderCell = headerRow.querySelector('.row-header-cell'); 
+        let newHeaderHtml = rowHeaderCell ? rowHeaderCell.outerHTML : ''; 
+        state.headers.forEach(h => { newHeaderHtml += h.outerHTML; });
+        headerRow.innerHTML = newHeaderHtml; 
 
-        const newCells = tr.querySelectorAll('td.editable-cell');
-        row.forEach((cellData, ci) => {
-            if (cellData.formula) {
-                cellFormulas.set(newCells[ci], cellData.formula);
-            }
+        // 2. Sync Select values
+        const selects = headerRow.querySelectorAll('.mapping-select');
+        const labels = headerRow.querySelectorAll('.header-label');
+        state.headers.forEach((h, idx) => {
+            if (selects[idx]) selects[idx].value = h.selectedValue;
+            if (labels[idx]) labels[idx].innerText = h.text;
+            const th = selects[idx]?.closest('th');
+            if (th) th.className = h.selectedValue ? 'header-matched' : 'header-custom';
         });
-    });
 
-    attachCellEvents();
-    updateStatusBar();
-    renumberRows();
-    activeCell = null;
+        // 3. Clear and Rebuild Body
+        const tbody = document.getElementById('tableBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        cellFormulas.clear();
+
+        state.rows.forEach((row, ri) => {
+            const tr = document.createElement('tr');
+            let html = `<td class="row-header-cell"><span style="font-size:0.7rem;">${ri+1}</span><button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button></td>`;
+            
+            row.forEach(cellData => { 
+                // THE FIX: Escape double quotes in the style string so it doesn't break the HTML attribute!
+                const safeStyle = (cellData.style || '').replace(/"/g, '&quot;');
+                html += `<td contenteditable="true" class="editable-cell" style="${safeStyle}">${escapeHtml(cellData.text)}</td>`; 
+            });
+            tr.innerHTML = html;
+            tbody.appendChild(tr);
+
+            const newCells = tr.querySelectorAll('td.editable-cell');
+            row.forEach((cellData, ci) => {
+                if (cellData.formula && newCells[ci]) {
+                    cellFormulas.set(newCells[ci], cellData.formula);
+                }
+            });
+        });
+
+        // 4. Cleanup
+        attachCellEvents();
+        updateStatusBar();
+        renumberRows();
+        lastStateJson = JSON.stringify(state);
+        activeCell = null; 
+    } catch (e) {
+        console.error("Critical error during Undo restoration:", e);
+    }
+    finally {
+        setTimeout(() => { isRestoring = false; }, 10); 
+    }
 }
 
 function undo() {
-    if (historyStack.length < 2) return;
+    if (historyStack.length < 2) return; // Need at least the current state and one previous
     const current = historyStack.pop();
     redoStack.push(current);
-    const prev = historyStack[historyStack.length-1];
-    if (prev) restoreState(prev);
+    const prev = historyStack[historyStack.length - 1];
+    restoreState(prev);
 }
 
 function redo() {
@@ -133,11 +164,11 @@ function evaluateFormula(formula, getCellValue) {
                 allValues.push(...values);
             } else {
                 let val = getCellValue(arg);
-                if (!isNaN(val) && val !== "") allValues.push(Number(val));
+                if (!isNaN(val) && val !== "" && val !== null) allValues.push(Number(val));
             }
         }
-        if (func === 'SUM') return allValues.reduce((a,b)=>a+b, 0);
-        if (func === 'AVERAGE') return allValues.length ? allValues.reduce((a,b)=>a+b,0)/allValues.length : 0;
+        if (func === 'SUM') return allValues.reduce((a, b) => a + b, 0);
+        if (func === 'AVERAGE') return allValues.length ? allValues.reduce((a, b) => a + b, 0) / allValues.length : 0;
         if (func === 'COUNT') return allValues.length;
         if (func === 'MAX') return allValues.length ? Math.max(...allValues) : 0;
         if (func === 'MIN') return allValues.length ? Math.min(...allValues) : 0;
@@ -145,10 +176,10 @@ function evaluateFormula(formula, getCellValue) {
     try {
         let evalExpr = expr.replace(/[A-Z]+[0-9]+/gi, (ref) => {
             let val = getCellValue(ref);
-            return isNaN(val) ? 0 : val;
+            return isNaN(val) || val === "" ? 0 : val;
         });
         return Function('"use strict";return (' + evalExpr + ')')();
-    } catch(e) { return null; }
+    } catch (e) { return "#VALUE!"; }
 }
 
 function parseArguments(argsString) {
@@ -171,20 +202,22 @@ function getRangeValues(start, end, getCellValue) {
     for (let r = startRow; r <= endRow; r++) {
         for (let c = startColNum; c <= endColNum; c++) {
             let val = getCellValue(numToCol(c) + r);
-            if (!isNaN(val) && val !== "") values.push(Number(val));
+            if (!isNaN(val) && val !== "" && val !== null) values.push(Number(val));
         }
     }
     return values;
 }
-function colToNum(col) { let num=0; for(let i=0;i<col.length;i++) num = num*26 + (col.charCodeAt(i)-64); return num-1; }
-function numToCol(num) { let col=""; while(num>=0){ col=String.fromCharCode(65+(num%26))+col; num=Math.floor(num/26)-1; } return col; }
+function colToNum(col) { let num = 0; for (let i = 0; i < col.length; i++) num = num * 26 + (col.charCodeAt(i) - 64); return num - 1; }
+function numToCol(num) { let col = ""; while (num >= 0) { col = String.fromCharCode(65 + (num % 26)) + col; num = Math.floor(num / 26) - 1; } return col; }
 
-// ==========================================
+/// ==========================================
 // 4. CELL HANDLING & UI UPDATES
 // ==========================================
 function updateStatusBar() {
-    document.getElementById('rowCount').innerText = document.querySelectorAll('#tableBody tr').length;
-    document.getElementById('colCount').innerText = document.querySelectorAll('#headerRow th:not(.row-header-cell)').length;
+    const rEl = document.getElementById('rowCount');
+    const cEl = document.getElementById('colCount');
+    if (rEl) rEl.innerText = document.querySelectorAll('#tableBody tr').length;
+    if (cEl) cEl.innerText = document.querySelectorAll('#headerRow th:not(.row-header-cell)').length;
 }
 
 function getCellValueFromDOM(ref) {
@@ -192,12 +225,25 @@ function getCellValueFromDOM(ref) {
     if (!match) return null;
     const colIndex = colToNum(match[1]); const rowIndex = parseInt(match[2]) - 1;
     const tbody = document.getElementById('tableBody');
-    if (rowIndex >= 0 && rowIndex < tbody.rows.length) {
-        const cell = tbody.rows[rowIndex].cells[colIndex+1]; 
+    if (tbody && rowIndex >= 0 && rowIndex < tbody.rows.length) {
+        const cell = tbody.rows[rowIndex].cells[colIndex + 1]; 
         if (cell) return cell.innerText.trim();
     }
     return null;
 }
+
+
+window.updateDropdownUI = function(dropdownId, displayValue) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+    const selectedEl = dropdown.querySelector('.selected-text') || dropdown.querySelector('.dropdown-selected');
+    if (selectedEl) {
+        // Find the text node to update so we don't accidentally delete dropdown arrow icons
+        let textNode = Array.from(selectedEl.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim().length > 0);
+        if (textNode) textNode.nodeValue = displayValue;
+        else selectedEl.innerText = displayValue;
+    }
+};
 
 function setActiveCell(cell) {
     if (activeCell) activeCell.classList.remove('cell-active');
@@ -206,39 +252,62 @@ function setActiveCell(cell) {
         activeCell.classList.add('cell-active');
         const rowIdx = activeCell.parentElement.rowIndex;
         const colIdx = activeCell.cellIndex - 1;
-        document.getElementById('activeCellRef').innerText = `${numToCol(colIdx)}${rowIdx}`;
-        document.getElementById('formulaInput').value = cellFormulas.get(activeCell) || activeCell.innerText;
+        const refEl = document.getElementById('activeCellRef');
+        const formulaEl = document.getElementById('formulaInput');
+        
+        if (refEl) refEl.innerText = `${numToCol(colIdx)}${rowIdx}`;
+        if (formulaEl) formulaEl.value = cellFormulas.get(activeCell) || activeCell.innerText;
 
         const style = window.getComputedStyle(activeCell);
-        originalState = {
-            fontFamily: activeCell.style.fontFamily || style.fontFamily,
-            fontSize: activeCell.style.fontSize || style.fontSize,
-            backgroundColor: activeCell.style.backgroundColor || style.backgroundColor,
-            color: activeCell.style.color || style.color
-        };
+        let currentFont = activeCell.style.fontFamily || style.fontFamily || 'Inter';
+        updateDropdownUI('fontDropdown', currentFont.split(',')[0].replace(/['"]/g, '').trim());
+
+        let currentSize = activeCell.style.fontSize || style.fontSize || '14px';
+        const sizeInput = document.getElementById('customSizeInput');
+        if (sizeInput) {
+            sizeInput.value = parseInt(currentSize) || 14;
+        } else {
+            updateDropdownUI('sizeDropdown', parseInt(currentSize));
+        }
+
+        const btnBold = document.querySelector('[data-cmd="bold"]');
+        const btnItalic = document.querySelector('[data-cmd="italic"]');
+        const btnUnderline = document.querySelector('[data-cmd="underline"]');
+
+        if (btnBold) btnBold.classList.toggle('active-format', style.fontWeight === 'bold' || style.fontWeight === '700');
+        if (btnItalic) btnItalic.classList.toggle('active-format', style.fontStyle === 'italic');
         
-        const fontDropdown = document.querySelector('#fontDropdown .dropdown-selected');
-        const sizeDropdown = document.querySelector('#sizeDropdown .dropdown-selected');
-        if(fontDropdown) fontDropdown.innerText = originalState.fontFamily.split(',')[0].replace(/['"]/g, '');
-        if(sizeDropdown) sizeDropdown.innerText = originalState.fontSize.replace('px', '');
-    } else {
-        document.getElementById('activeCellRef').innerText = '';
-        document.getElementById('formulaInput').value = '';
+        if (btnUnderline) {
+            const isUnderline = style.textDecoration.includes('underline');
+            const isDouble = style.textDecoration.includes('double');
+            
+            btnUnderline.classList.toggle('active-format', isUnderline);
+            
+            // Show a visual line under the button so they know if it's single or double!
+            if (isDouble) btnUnderline.style.borderBottom = "3px double #1e6f3f";
+            else if (isUnderline) btnUnderline.style.borderBottom = "3px solid #1e6f3f";
+            else btnUnderline.style.borderBottom = "none";
+        }
     }
 }
 
 function attachCellEvents() {
-    // FIX: Using onfocus and oninput instead of addEventListener prevents duplicate firing 
-    // when the table is rebuilt by the restoreState (Undo/Redo) function.
+    document.querySelectorAll('.tool-btn, .custom-dropdown, .color-swatch').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'INPUT') e.preventDefault();
+        });
+    });
+
     document.querySelectorAll('.editable-cell').forEach(cell => {
         cell.onfocus = () => setActiveCell(cell);
-        cell.oninput = () => captureState();
+        cell.onblur = () => captureState();
     });
 }
 
 function updateCellFromFormulaBar() {
     if (!activeCell) return;
-    const newValue = document.getElementById('formulaInput').value;
+    const formulaInput = document.getElementById('formulaInput');
+    const newValue = formulaInput.value;
     if (newValue.startsWith('=')) {
         cellFormulas.set(activeCell, newValue);
         const result = evaluateFormula(newValue, getCellValueFromDOM);
@@ -250,59 +319,122 @@ function updateCellFromFormulaBar() {
     captureState();
 }
 
-document.getElementById('formulaInput').addEventListener('change', updateCellFromFormulaBar);
-document.getElementById('formulaInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        updateCellFromFormulaBar();
-        if (activeCell && activeCell.parentElement.nextElementSibling) {
-            const nextCell = activeCell.parentElement.nextElementSibling.children[activeCell.cellIndex];
-            if (nextCell) nextCell.focus();
+// Formula Bar Listeners
+const fBar = document.getElementById('formulaInput');
+if (fBar) {
+    fBar.addEventListener('change', updateCellFromFormulaBar);
+    fBar.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            updateCellFromFormulaBar();
+            activeCell?.blur();
         }
-    }
-});
+    });
+}
 
+// Function Buttons (SUM, MIN, etc)
 document.querySelectorAll('.func-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         if (!activeCell) return;
         const func = btn.getAttribute('data-func');
         const rowIdx = activeCell.parentElement.rowIndex;
         const colIdx = numToCol(activeCell.cellIndex - 1);
-        const formula = `=${func.toUpperCase()}(${colIdx}1:${colIdx}${rowIdx > 1 ? rowIdx-1 : 1})`;
-        document.getElementById('formulaInput').value = formula;
-        updateCellFromFormulaBar();
+        const formula = `=${func.toUpperCase()}(${colIdx}1:${colIdx}${rowIdx > 1 ? rowIdx - 1 : 1})`;
+        const fInput = document.getElementById('formulaInput');
+        if (fInput) {
+            fInput.value = formula;
+            updateCellFromFormulaBar();
+        }
     });
 });
 
-// ==========================================
+/// ==========================================
 // 5. FORMATTING TOOLBAR & COLORS
 // ==========================================
 function setupFormattingToolbar() {
     document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
-        dropdown.querySelector('.dropdown-selected').addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-dropdown').forEach(d => { if(d !== dropdown) d.classList.remove('active') });
-            dropdown.classList.toggle('active');
-        });
+        const selected = dropdown.querySelector('.dropdown-selected');
+        if (selected) {
+            selected.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.custom-dropdown').forEach(d => { if (d !== dropdown) d.classList.remove('active'); });
+                dropdown.classList.toggle('active');
+            });
+        }
     });
+
     document.addEventListener('click', () => {
         document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('active'));
     });
 
+    function applyFormat(property, value) {
+        if (!activeCell) return;
+        
+        if (property === 'fontSize' && !String(value).includes('px')) {
+            value = parseInt(value) + 'px';
+        }
+
+        activeCell.style[property] = value;
+        
+        if (property === 'fontFamily') {
+            updateDropdownUI('fontDropdown', value.split(',')[0].replace(/['"]/g, '').trim());
+        } else if (property === 'fontSize') {
+            const sizeInput = document.getElementById('customSizeInput');
+            if (sizeInput) sizeInput.value = parseInt(value) || 14;
+            else updateDropdownUI('sizeDropdown', parseInt(value));
+        }
+        
+        captureState();
+    }
+
+    const sizeInput = document.getElementById('customSizeInput');
+    if (sizeInput) {
+        sizeInput.addEventListener('click', (e) => { e.stopPropagation(); sizeInput.select(); });
+        sizeInput.addEventListener('change', function() {
+            applyFormat('fontSize', this.value);
+        });
+    }
+
     function setupDropdownItems(dropdownId, styleProperty) {
-        document.querySelectorAll(`#${dropdownId} [data-val]`).forEach(item => {
-            item.addEventListener('mouseover', function() { if (activeCell) activeCell.style[styleProperty] = this.getAttribute('data-val'); });
-            item.addEventListener('mouseout', function() { if (activeCell) activeCell.style[styleProperty] = originalState[styleProperty]; });
-            item.addEventListener('click', function() {
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+
+        let trueOriginal = '';
+
+        dropdown.addEventListener('mousedown', () => {
+            if (activeCell && !dropdown.classList.contains('active')) {
+                trueOriginal = activeCell.style[styleProperty];
+            }
+        });
+
+        dropdown.querySelectorAll('[data-val]').forEach(item => {
+            item.addEventListener('mouseenter', function() { 
                 if (activeCell) {
-                    const val = this.getAttribute('data-val');
-                    activeCell.style[styleProperty] = val;
-                    originalState[styleProperty] = val;
-                    document.querySelector(`#${dropdownId} .dropdown-selected`).innerText = this.innerText;
-                    captureState();
+                    let val = this.getAttribute('data-val');
+                    if (styleProperty === 'fontSize' && !val.includes('px')) val += 'px';
+                    activeCell.style[styleProperty] = val; 
                 }
+            });
+            
+            item.addEventListener('mouseleave', function() { 
+                // Revert to what the cell was before the dropdown even opened
+                if (activeCell) activeCell.style[styleProperty] = trueOriginal; 
+            });
+            
+            item.addEventListener('click', function(e) {
+                e.stopPropagation(); 
+                if (!activeCell) return;
+                
+                let val = this.getAttribute('data-val');
+                if (styleProperty === 'fontSize' && !val.includes('px')) val += 'px';
+                
+                trueOriginal = val; // Lock this as the new baseline so mouseleave doesn't erase it
+                applyFormat(styleProperty, val);
+                
+                dropdown.classList.remove('active');
             });
         });
     }
+    
     setupDropdownItems('fontDropdown', 'fontFamily');
     setupDropdownItems('sizeDropdown', 'fontSize');
 
@@ -311,13 +443,42 @@ function setupFormattingToolbar() {
             e.preventDefault();
             if (!activeCell) return;
             const cmd = this.getAttribute('data-cmd');
-            if (cmd === 'bold') activeCell.style.fontWeight = (activeCell.style.fontWeight === 'bold' || activeCell.style.fontWeight === '700') ? 'normal' : 'bold';
-            else if (cmd === 'italic') activeCell.style.fontStyle = activeCell.style.fontStyle === 'italic' ? 'normal' : 'italic';
-            else if (cmd === 'underline') activeCell.style.textDecoration = activeCell.style.textDecoration.includes('underline') ? 'none' : 'underline';
+
+            if (cmd === 'bold') {
+                const isBold = activeCell.style.fontWeight === 'bold' || activeCell.style.fontWeight === '700';
+                activeCell.style.fontWeight = isBold ? 'normal' : 'bold';
+                this.classList.toggle('active-format', !isBold);
+            } 
+            else if (cmd === 'italic') {
+                const isItalic = activeCell.style.fontStyle === 'italic';
+                activeCell.style.fontStyle = isItalic ? 'normal' : 'italic';
+                this.classList.toggle('active-format', !isItalic);
+            } 
+            else if (cmd === 'underline') {
+                const currentDeco = activeCell.style.textDecoration;
+                
+                if (currentDeco.includes('underline double')) {
+                    // It's double. Turn it completely off.
+                    activeCell.style.textDecoration = 'none';
+                    this.classList.remove('active-format');
+                    this.style.borderBottom = "none";
+                } else if (currentDeco.includes('underline')) {
+                    // It's single. Upgrade to double!
+                    activeCell.style.textDecoration = 'underline double';
+                    this.classList.add('active-format');
+                    this.style.borderBottom = "3px double #1e6f3f";
+                } else {
+                    // It's off. Turn on single.
+                    activeCell.style.textDecoration = 'underline';
+                    this.classList.add('active-format');
+                    this.style.borderBottom = "3px solid #1e6f3f";
+                }
+            }
             captureState();
         });
     });
 
+    // 5. Colors
     const excelColors = [
         '#ffffff', '#000000', '#eeece1', '#1f497d', '#4f81bd', '#c0504d',
         '#f2f2f2', '#808080', '#ddd9c3', '#c6d9f1', '#dbe5f1', '#f2dcdb',
@@ -326,67 +487,85 @@ function setupFormattingToolbar() {
         '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff', '#ff00ff'
     ];
 
-    window.previewColor = function(color, isText) { if (activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = color; };
-    window.revertColor = function(isText) { if (activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = originalState[isText ? 'color' : 'backgroundColor']; };
-    window.applyColor = function(color, isText) {
+    window.applyColor = (color, isText) => {
         if (!activeCell) return;
         activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
-        originalState[isText ? 'color' : 'backgroundColor'] = color;
-        document.querySelector(`#${isText ? 'textColorDropdown' : 'fillColorDropdown'} .color-indicator`).style.backgroundColor = color;
+        const ind = document.querySelector(`#${isText ? 'textColorDropdown' : 'fillColorDropdown'} .color-indicator`);
+        if (ind) ind.style.backgroundColor = color;
         captureState();
     };
 
     function buildPalette(gridId, isText) {
         const grid = document.getElementById(gridId);
-        if (!grid) return;
+        const dropdown = grid?.closest('.custom-dropdown');
+        if (!grid || !dropdown) return;
+        
+        let trueOriginalColor = '';
+
+        dropdown.addEventListener('mousedown', () => {
+            if (activeCell && !dropdown.classList.contains('active')) {
+                trueOriginalColor = activeCell.style[isText ? 'color' : 'backgroundColor'];
+            }
+        });
+
         excelColors.forEach(color => {
             const swatch = document.createElement('div');
             swatch.className = 'color-swatch'; swatch.style.backgroundColor = color;
-            swatch.addEventListener('click', () => applyColor(color, isText));
-            swatch.addEventListener('mouseover', () => previewColor(color, isText));
-            swatch.addEventListener('mouseout', () => revertColor(isText));
+            
+            swatch.addEventListener('mouseenter', () => {
+                if(activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
+            });
+            swatch.addEventListener('mouseleave', () => {
+                if(activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = trueOriginalColor;
+            });
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if(activeCell) {
+                    trueOriginalColor = color;
+                    applyColor(color, isText);
+                    dropdown.classList.remove('active');
+                }
+            });
+            
             grid.appendChild(swatch);
         });
     }
     buildPalette('fillPaletteGrid', false);
     buildPalette('textPaletteGrid', true);
 
-    const nativeFill = document.getElementById('nativeFillPicker');
-    const nativeText = document.getElementById('nativeTextPicker');
-    if(nativeFill) nativeFill.addEventListener('input', (e) => applyColor(e.target.value, false));
-    if(nativeText) nativeText.addEventListener('input', (e) => applyColor(e.target.value, true));
+    const nFill = document.getElementById('nativeFillPicker');
+    const nText = document.getElementById('nativeTextPicker');
+    if (nFill) nFill.oninput = (e) => applyColor(e.target.value, false);
+    if (nText) nText.oninput = (e) => applyColor(e.target.value, true);
 }
-
 // ==========================================
 // 6. ROW/COLUMN OPERATIONS
 // ==========================================
 function addRow() {
     const tbody = document.getElementById('tableBody');
     const colCount = document.querySelectorAll('#headerRow th:not(.row-header-cell)').length;
-    const newRow = document.createElement('tr');
-    let html = `<td class="row-header-cell"><span style="font-size:0.7rem;">${tbody.children.length+1}</span><button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button></td>`;
-    for(let i=0; i<colCount; i++) html += `<td contenteditable="true" class="editable-cell"></td>`;
-    newRow.innerHTML = html;
-    tbody.appendChild(newRow);
+    const tr = document.createElement('tr');
+    let html = `<td class="row-header-cell"><span style="font-size:0.7rem;">${tbody.children.length + 1}</span><button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button></td>`;
+    for (let i = 0; i < colCount; i++) html += `<td contenteditable="true" class="editable-cell"></td>`;
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
     attachCellEvents(); updateStatusBar(); renumberRows(); captureState();
 }
+
 function deleteRowHandler(btn) {
-    if(document.querySelectorAll('#tableBody tr').length <= 1) return alert("At least one row required");
-    const row = btn.closest('tr');
-    row.querySelectorAll('.editable-cell').forEach(cell => cellFormulas.delete(cell));
-    row.remove();
-    attachCellEvents(); updateStatusBar(); renumberRows(); captureState();
+    if (document.querySelectorAll('#tableBody tr').length <= 1) return alert("Min 1 row required");
+    btn.closest('tr').remove();
+    updateStatusBar(); renumberRows(); captureState();
 }
+
 function addColumn() {
     const headerRow = document.getElementById('headerRow');
     const newTh = document.createElement('th');
-    newTh.className = 'header-custom'; newTh.setAttribute('data-colname', 'New_Column');
-    let dbOptionsHtml = '';
-    const sampleSelect = document.querySelector('.mapping-select');
-    if (sampleSelect) {
-        sampleSelect.querySelectorAll('option').forEach(opt => { dbOptionsHtml += `<option value="${opt.value.replace(/"/g, '&quot;')}">${opt.textContent}</option>`; });
-    }
-    newTh.innerHTML = `<div class="header-content"><button class="del-col" onclick="deleteColumnHandler(this)"><i class="fas fa-times"></i></button><span class="header-label" contenteditable="true">New_Column</span><select class="mapping-select" onchange="handleMappingChange(this)"><option value="">-- Map to DB field --</option>${dbOptionsHtml}</select></div>`;
+    newTh.className = 'header-custom';
+    let opts = '';
+    const sample = document.querySelector('.mapping-select');
+    if (sample) sample.querySelectorAll('option').forEach(o => { opts += `<option value="${o.value}">${o.textContent}</option>`; });
+    newTh.innerHTML = `<div class="header-content"><button class="del-col" onclick="deleteColumnHandler(this)"><i class="fas fa-times"></i></button><span class="header-label" contenteditable="true">New</span><select class="mapping-select" onchange="handleMappingChange(this)">${opts}</select></div>`;
     headerRow.appendChild(newTh);
     document.querySelectorAll('#tableBody tr').forEach(row => {
         const td = document.createElement('td'); td.contentEditable = 'true'; td.className = 'editable-cell';
@@ -394,26 +573,24 @@ function addColumn() {
     });
     attachCellEvents(); updateStatusBar(); captureState();
 }
+
 function deleteColumnHandler(btn) {
-    const th = btn.closest('th'); const idx = th.cellIndex; 
+    const th = btn.closest('th'); const idx = th.cellIndex;
     th.remove();
-    document.querySelectorAll('#tableBody tr').forEach(row => {
-        const cell = row.cells[idx]; if (cell) cellFormulas.delete(cell);
-        row.deleteCell(idx); 
-    });
-    attachCellEvents(); updateStatusBar(); captureState();
+    document.querySelectorAll('#tableBody tr').forEach(row => row.deleteCell(idx));
+    updateStatusBar(); captureState();
 }
+
 function renumberRows() {
     document.querySelectorAll('#tableBody tr').forEach((row, i) => {
-        const span = row.querySelector('.row-header-cell span');
-        if (span) span.innerText = i+1;
+        const s = row.querySelector('.row-header-cell span');
+        if (s) s.innerText = i + 1;
     });
 }
 window.deleteRowHandler = deleteRowHandler;
 window.deleteColumnHandler = deleteColumnHandler;
-window.handleMappingChange = function(select) {
-    const th = select.closest('th');
-    th.className = select.value ? 'header-matched' : 'header-custom';
+window.handleMappingChange = (sel) => {
+    sel.closest('th').className = sel.value ? 'header-matched' : 'header-custom';
     captureState();
 };
 
@@ -421,32 +598,23 @@ window.handleMappingChange = function(select) {
 // 7. KEYBOARD NAVIGATION
 // ==========================================
 function attachKeyboardNavigation() {
-    document.addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
         if (!activeCell) return;
-        const row = activeCell.parentElement; const tbody = document.getElementById('tableBody');
-        const rows = Array.from(tbody.querySelectorAll('tr')); const rowIndex = rows.indexOf(row);
-        const cells = Array.from(row.querySelectorAll('td.editable-cell')); const colIndex = cells.indexOf(activeCell);
-        
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            let nextCell = null;
-            if (e.shiftKey) {
-                if (colIndex > 0) nextCell = cells[colIndex-1];
-                else if (rowIndex > 0) nextCell = Array.from(rows[rowIndex-1].querySelectorAll('td.editable-cell')).pop();
-            } else {
-                if (colIndex < cells.length-1) nextCell = cells[colIndex+1];
-                else if (rowIndex < rows.length-1) nextCell = rows[rowIndex+1].querySelector('td.editable-cell');
-            }
-            if (nextCell) nextCell.focus();
-        } else if (e.key === 'Enter') {
-            e.preventDefault(); updateCellFromFormulaBar();
-            if (rowIndex < rows.length-1) rows[rowIndex+1].querySelectorAll('td.editable-cell')[colIndex]?.focus();
-        } else if (e.key === 'ArrowUp' && rowIndex > 0) { e.preventDefault(); rows[rowIndex-1].querySelectorAll('td.editable-cell')[colIndex]?.focus(); } 
-        else if (e.key === 'ArrowDown' && rowIndex < rows.length-1) { e.preventDefault(); rows[rowIndex+1].querySelectorAll('td.editable-cell')[colIndex]?.focus(); } 
-        else if (e.key === 'ArrowLeft' && colIndex > 0) { e.preventDefault(); cells[colIndex-1].focus(); } 
-        else if (e.key === 'ArrowRight' && colIndex < cells.length-1) { e.preventDefault(); cells[colIndex+1].focus(); }
+
+        const row = activeCell.parentElement;
+        const tbody = document.getElementById('tableBody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const rIdx = rows.indexOf(row);
+        const cells = Array.from(row.querySelectorAll('td.editable-cell'));
+        const cIdx = cells.indexOf(activeCell);
+
+        if (e.key === 'ArrowUp' && rIdx > 0) { e.preventDefault(); rows[rIdx - 1].cells[cIdx + 1].focus(); }
+        else if (e.key === 'ArrowDown' && rIdx < rows.length - 1) { e.preventDefault(); rows[rIdx + 1].cells[cIdx + 1].focus(); }
+        else if (e.key === 'ArrowLeft' && cIdx > 0) { e.preventDefault(); cells[cIdx - 1].focus(); }
+        else if (e.key === 'ArrowRight' && cIdx < cells.length - 1) { e.preventDefault(); cells[cIdx + 1].focus(); }
+        else if (e.key === 'Enter') { e.preventDefault(); updateCellFromFormulaBar(); rows[rIdx + 1]?.cells[cIdx + 1]?.focus(); }
     });
 }
 
@@ -454,76 +622,92 @@ function attachKeyboardNavigation() {
 // 8. SAVE WORKBOOK
 // ==========================================
 async function saveData() {
-    const saveBtn = document.getElementById('saveProcessBtn');
-    const originalHtml = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving...';
-    saveBtn.disabled = true;
+    const btn = document.getElementById('saveProcessBtn');
+    if (!btn) return;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving...';
+    btn.disabled = true;
 
     try {
-        const headers = []; const colIndicesToKeep = []; const mappings = {};
+        const headers = []; const colIndices = []; const mappings = {};
+        
         document.querySelectorAll('#headerRow th:not(.row-header-cell)').forEach((th, idx) => {
-            const isTemplateOnly = th.classList.contains('header-template-only');
-            const select = th.querySelector('.mapping-select');
-            const isMapped = select && select.value !== "";
-            const headerText = th.querySelector('.header-label').innerText.trim();
-
-            if (!isTemplateOnly || isMapped) {
-                colIndicesToKeep.push(idx);
-                headers.push(isMapped ? select.value : headerText);
-                if (isMapped) mappings[headerText] = select.value;
+            const isTemp = th.classList.contains('header-template-only');
+            const sel = th.querySelector('.mapping-select');
+            const mapped = sel && sel.value !== "";
+            const labelEl = th.querySelector('.header-label');
+            const text = labelEl ? labelEl.innerText.trim() : "";
+            
+            if (!isTemp || mapped) {
+                colIndices.push(idx);
+                headers.push(mapped ? sel.value : text);
+                if (mapped) mappings[text] = sel.value;
             }
         });
 
         const rows = [];
         document.querySelectorAll('#tableBody tr').forEach(tr => {
-            const rowData = []; const cells = tr.querySelectorAll('td.editable-cell');
-            colIndicesToKeep.forEach(idx => {
-                if (cells[idx]) {
-                    const cell = cells[idx];
-                    rowData.push({
-                        value: cell.innerText.trim(),
-                        bold: cell.style.fontWeight === "bold" || cell.style.fontWeight === "700",
-                        italic: cell.style.fontStyle === "italic",
-                        underline: cell.style.textDecoration.includes("underline"),
-                        color: cell.style.color || null,
-                        bg: cell.style.backgroundColor || null,
-                        fontFamily: cell.style.fontFamily || null,
-                        fontSize: cell.style.fontSize || null
-                    });
+            const rowData = []; 
+            const tds = tr.querySelectorAll('td.editable-cell');
+            
+            colIndices.forEach(idx => {
+                const c = tds[idx];
+                
+                if (!c) {
+                    rowData.push({ value: "" });
+                    return;
                 }
+
+                let currentUnderline = null;
+                const decoration = c.style.textDecoration || "";
+                if (decoration.includes("underline double")) currentUnderline = "double";
+                else if (decoration.includes("underline")) currentUnderline = "single";
+
+                rowData.push({
+                    value: c.innerText.trim(),
+                    bold: c.style.fontWeight === "bold" || c.style.fontWeight === "700",
+                    italic: c.style.fontStyle === "italic",
+                    underline: currentUnderline,
+                    color: c.style.color || null,
+                    bg: c.style.backgroundColor || null,
+                    fontFamily: c.style.fontFamily || null,
+                    fontSize: c.style.fontSize || null
+                });
             });
             rows.push(rowData);
         });
 
-        const response = await fetch(window.DJANGO_VARS.saveUrl, {
+        const payload = { headers, rows, mappings };
+        console.log("🚀 STEP 1 (JS OUT): Sending this payload to Python ->", payload);
+        // Let's specifically check the first row's styling:
+        console.log("🚀 STEP 1a (JS OUT - Check Row 1):", rows[0]);
+
+        const res = await fetch(window.DJANGO_VARS.saveUrl, {
             method: "POST", 
-            headers: { 
-                "Content-Type": "application/json", 
-                "X-CSRFToken": window.DJANGO_VARS.csrfToken 
-            },
+            headers: { "Content-Type": "application/json", "X-CSRFToken": window.DJANGO_VARS.csrfToken },
             body: JSON.stringify({ headers, rows, mappings })
         });
-
-        let result;
-        try { result = await response.json(); } 
-        catch(parseErr) { showTemporaryToast("Server crashed! Check your VSCode terminal.", "error"); saveBtn.innerHTML = originalHtml; saveBtn.disabled = false; return; }
-
-        if (response.ok && result.status === "success") {
-            showTemporaryToast("Saved successfully! Redirecting...", "success");
-            setTimeout(() => { 
-                window.location.href = window.DJANGO_VARS.uploadUrl + "?processed_id=" + result.new_file_id + "&preview=true"; 
-            }, 800);
-        } else { showTemporaryToast("Error: " + (result.error || "Failed to save"), "error"); }
-    } catch(e) { showTemporaryToast("Connection lost.", "error"); } 
-    finally { saveBtn.innerHTML = originalHtml; saveBtn.disabled = false; }
+        
+        const data = await res.json();
+        if (res.ok) {
+            showToast("Saved!", "success");
+            setTimeout(() => window.location.href = window.DJANGO_VARS.uploadUrl + "?processed_id=" + data.new_file_id + "&preview=true", 800);
+        } else { 
+            showToast("Error: " + data.error, "error"); 
+        }
+    } catch (e) { 
+        console.error("Save failed:", e);
+        showToast("Connection error", "error"); 
+    } finally { 
+        btn.innerHTML = oldHtml; 
+        btn.disabled = false; 
+    }
 }
 
-function showTemporaryToast(msg, type) {
-    let toast = document.createElement('div'); toast.innerText = msg;
-    toast.style.position = 'fixed'; toast.style.bottom = '70px'; toast.style.right = '30px';
-    toast.style.background = type === 'success' ? '#1e6f3f' : '#d13438'; toast.style.color = 'white';
-    toast.style.padding = '12px 24px'; toast.style.borderRadius = '40px'; toast.style.fontWeight = '500'; toast.style.zIndex = '9999';
-    document.body.appendChild(toast); setTimeout(() => toast.remove(), 2500);
+function showToast(msg, type) {
+    let t = document.createElement('div'); t.innerText = msg;
+    t.style.cssText = `position:fixed; bottom:70px; right:30px; background:${type === 'success' ? '#1e6f3f' : '#d13438'}; color:white; padding:12px 24px; border-radius:40px; z-index:9999;`;
+    document.body.appendChild(t); setTimeout(() => t.remove(), 2500);
 }
 
 // ==========================================
@@ -534,57 +718,62 @@ function init() {
     updateStatusBar();
     renumberRows();
     attachKeyboardNavigation();
-    setupFormattingToolbar(); 
+    setupFormattingToolbar();
+
+    const uiBtns = { 'addRowBtn': addRow, 'addColBtn': addColumn, 'undoBtn': undo, 'redoBtn': redo, 'saveProcessBtn': saveData };
+    Object.entries(uiBtns).forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.onclick = fn; });
+
+    // --- THE FIX: AGGRESSIVELY UNWRAP DJANGO STRINGS ---
+    let saved = window.DJANGO_VARS.savedMappings;
+    while (typeof saved === 'string') {
+        try { saved = JSON.parse(saved); } catch(e) { break; }
+    }
     
-    document.getElementById('addRowBtn').onclick = addRow;
-    document.getElementById('addColBtn').onclick = addColumn;
-    document.getElementById('undoBtn').onclick = undo;
-    document.getElementById('redoBtn').onclick = redo;
-    document.getElementById('saveProcessBtn').onclick = saveData;
-    
-    const firstCell = document.querySelector('#tableBody td.editable-cell');
-    if (firstCell) { firstCell.focus(); setActiveCell(firstCell); }
-    captureState();
-    
-    const savedMappings = window.DJANGO_VARS.savedMappings;
-    if (savedMappings && Object.keys(savedMappings).length > 0) {
+    if (saved && typeof saved === 'object') {
         document.querySelectorAll('#headerRow th:not(.row-header-cell)').forEach(th => {
-            const labelSpan = th.querySelector('.header-label');
-            if (!labelSpan) return;
-            const colName = labelSpan.innerText.trim();
-            if (savedMappings[colName]) {
-                const select = th.querySelector('.mapping-select');
-                if (select) { select.value = savedMappings[colName]; handleMappingChange(select); }
+            const label = th.querySelector('.header-label')?.innerText.trim();
+            if (saved[label]) {
+                const s = th.querySelector('.mapping-select');
+                if (s) { s.value = saved[label]; handleMappingChange(s); }
             }
         });
     }
 
-    // Restore Saved Styles from Database
-    const styleData = window.DJANGO_VARS.styleData;
-    if (styleData && Array.isArray(styleData) && styleData.length > 0) {
+    let styles = window.DJANGO_VARS.styleData;
+    while (typeof styles === 'string') {
+        try { styles = JSON.parse(styles); } catch(e) { break; }
+    }
+
+    if (styles && Array.isArray(styles)) {
         const trs = document.querySelectorAll('#tableBody tr');
-        
-        styleData.forEach((row, ri) => {
+        styles.forEach((row, ri) => {
             if (trs[ri]) {
                 const tds = trs[ri].querySelectorAll('td.editable-cell');
-                row.forEach((cellData, ci) => {
-                    if (tds[ci] && typeof cellData === 'object') {
-                        // Apply all saved formatting back to the cells
-                        if (cellData.bold) tds[ci].style.fontWeight = 'bold';
-                        if (cellData.italic) tds[ci].style.fontStyle = 'italic';
-                        if (cellData.underline) tds[ci].style.textDecoration = 'underline';
-                        if (cellData.color) tds[ci].style.color = cellData.color;
-                        if (cellData.bg) tds[ci].style.backgroundColor = cellData.bg;
-                        if (cellData.fontFamily) tds[ci].style.fontFamily = cellData.fontFamily;
-                        if (cellData.fontSize) tds[ci].style.fontSize = cellData.fontSize;
+                row.forEach((c, ci) => {
+                    if (tds[ci]) {
+                        // Re-apply all formatting safely
+                        if (c.bold) tds[ci].style.fontWeight = 'bold';
+                        if (c.italic) tds[ci].style.fontStyle = 'italic';
+                        
+                        if (c.underline === 'double') tds[ci].style.textDecoration = 'underline double';
+                        else if (c.underline === 'single' || c.underline === true) tds[ci].style.textDecoration = 'underline';
+                        
+                        if (c.color) tds[ci].style.color = c.color;
+                        if (c.bg) tds[ci].style.backgroundColor = c.bg;
+                        if (c.fontFamily) tds[ci].style.fontFamily = c.fontFamily;
+                        if (c.fontSize) tds[ci].style.fontSize = c.fontSize;
                     }
                 });
             }
         });
-        
-        // Take a snapshot so "Undo" remembers these loaded styles
-        captureState(); 
     }
+
+    captureState();
+
+    console.log("🔄 STEP 5 (JS IN): Page loaded. What did Django give us?");
+    console.log("Raw DJANGO_VARS.styleData type:", typeof window.DJANGO_VARS.styleData);
+    console.log("Raw DJANGO_VARS.styleData value:", window.DJANGO_VARS.styleData);
+    console.log("Parsed styles variable:", styles);
 }
 
 init();

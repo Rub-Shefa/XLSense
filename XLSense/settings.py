@@ -133,3 +133,8 @@ BaseDatabaseWrapper.check_database_version_supported = lambda self: None
 DatabaseFeatures.can_return_rows_from_bulk_insert = property(lambda self: False)
 DatabaseFeatures.can_return_columns_from_insert = property(lambda self: False)
 DatabaseFeatures.has_native_uuid_field = property(lambda self: False)
+
+import os
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
