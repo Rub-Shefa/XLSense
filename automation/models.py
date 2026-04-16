@@ -47,7 +47,7 @@ class UploadedFile(models.Model):
     upload_time = models.DateTimeField(auto_now_add=True)
     processed_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=50, default="Pending")
-    column_mappings = models.JSONField(default=dict, blank=True) 
+    column_mappings = models.JSONField(default=dict, blank=True)
     style_data = models.TextField(null=True, blank=True)
     column_mappings = models.JSONField(null=True, blank=True)
 
@@ -79,13 +79,13 @@ class ValidationResult(models.Model):
         directly from the model instance.
         """
         # We import here to avoid circular dependency with views/utils
-        from .utils import generate_ai_explanation 
-        
+        from .utils import generate_ai_explanation
+
         # We reuse your new professional logic
         return generate_ai_explanation(
             formula_name="Validation Rule",
             target_column=self.column_name,
-            condition_expression=self.error_details
+            condition_expression=self.error_details,
         )
 
 

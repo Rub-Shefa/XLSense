@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('automation', '0005_uploadedfile_column_mappings_uploadedfile_style_data'),
+        ("automation", "0005_uploadedfile_column_mappings_uploadedfile_style_data"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='uploadedfile',
-            name='style_data',
+            model_name="uploadedfile",
+            name="style_data",
             field=models.TextField(blank=True, null=True),
         ),
     ]
