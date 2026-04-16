@@ -113,6 +113,7 @@ def workbook_editor_view(request, file_id):
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return HttpResponse(f"Error loading file: {e}")
 
@@ -121,9 +122,9 @@ def workbook_editor_view(request, file_id):
 
     # REMOVED my ast hacks! Django natively loads JSONFields into lists.
     style_data = getattr(uploaded_file, "style_data", [])
-    if not style_data: 
+    if not style_data:
         style_data = []
-        
+
     style_data_json = json.dumps(style_data)
 
     return render(
@@ -149,13 +150,15 @@ def save_workbook_data(request, file_id):
         try:
             # --- STEP 2: TRACK DATA COMING FROM JS ---
             data = json.loads(request.body)
-            print("\n" + "="*50)
+            print("\n" + "=" * 50)
             print("📥 STEP 2 (PYTHON IN): Received data from JS!")
             if data.get("rows"):
-                print(f"Sample Row 0 Style Data: {data.get('rows')[0][0]}") # Check first cell of first row
+                print(
+                    f"Sample Row 0 Style Data: {data.get('rows')[0][0]}"
+                )  # Check first cell of first row
             else:
                 print("⚠️ WARNING: 'rows' key is missing or empty in JS payload!")
-            
+
             headers = data.get("headers")
             rows = data.get("rows")
             mappings = data.get("mappings", {})
@@ -170,7 +173,7 @@ def save_workbook_data(request, file_id):
                 seen = set()
                 for i, h in enumerate(headers):
                     if h in seen:
-                        headers[i] = f"{h}_{i}"  
+                        headers[i] = f"{h}_{i}"
                     seen.add(h)
 
             # 3. Create DataFrame and Align Styles
@@ -184,21 +187,25 @@ def save_workbook_data(request, file_id):
                         clean_row.append(cell.get("value", cell.get("text", "")))
                     else:
                         clean_row.append(cell)
-                
-                valid_vals = [v for v in clean_row if pd.notna(v) and str(v).strip() not in ["", "nan", "None"]]
-                
+
+                valid_vals = [
+                    v
+                    for v in clean_row
+                    if pd.notna(v) and str(v).strip() not in ["", "nan", "None"]
+                ]
+
                 if len(valid_vals) > 1:
                     clean_rows.append(clean_row)
                     aligned_style_data.append(row)
 
             df = pd.DataFrame(clean_rows, columns=headers)
-            
+
             # --- IMPORTANT: Convert list to JSON string for the DB ---
-            style_data = json.dumps(aligned_style_data) 
-            
+            style_data = json.dumps(aligned_style_data)
+
             df = preprocess_dataframe(df)
             df = remove_empty_unnamed_columns(df)
-            
+
             # 4. Generate new filename
             original_name = os.path.basename(original_file.file.name)
             name_part = original_name.replace(".csv", "").replace(".xlsx", "")
@@ -217,25 +224,28 @@ def save_workbook_data(request, file_id):
                 status="Completed",
                 processed_time=timezone.now(),
             )
-            
+
             # 7. Save the physical file first
             # This creates the row in the database and gives us an ID
-            new_uploaded_file.file.save(new_filename, ContentFile(output.read()), save=True)
+            new_uploaded_file.file.save(
+                new_filename, ContentFile(output.read()), save=True
+            )
 
             # --- STEP 3: THE RECOVERY SAVE ---
             # Now that the file is safely on the disk, we FORCE the data into the DB
             print(f"💾 STEP 3: Forcing styles into New File ID: {new_uploaded_file.id}")
-            
+
             # Use .update() to bypass any Django model-saving weirdness
             UploadedFile.objects.filter(id=new_uploaded_file.id).update(
-                style_data=style_data,
-                column_mappings=mappings
+                style_data=style_data, column_mappings=mappings
             )
 
             # Verify for the logs
             new_uploaded_file.refresh_from_db()
-            print(f"✅ VERIFIED: DB now holds {len(str(new_uploaded_file.style_data))} characters.")
-            print("="*50 + "\n")
+            print(
+                f"✅ VERIFIED: DB now holds {len(str(new_uploaded_file.style_data))} characters."
+            )
+            print("=" * 50 + "\n")
 
             return JsonResponse(
                 {"status": "success", "new_file_id": new_uploaded_file.id}
