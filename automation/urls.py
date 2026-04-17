@@ -3,6 +3,8 @@ from django.contrib.auth import views as auth_views
 from . import views
 from . import editor_views
 from .views import download_excel_view
+from .text_import_views import text_import_view, download_ai_excel
+
 
 urlpatterns = [
     # Homepage
@@ -38,6 +40,9 @@ urlpatterns = [
         editor_views.save_workbook_data,
         name="save_workbook",
     ),
+
+    path('text-import/', text_import_view, name='text_import'),
+    path('text-import/download/', download_ai_excel, name='download_ai_excel'),
 ]
 urlpatterns += [
     path("download/<int:file_id>/", download_excel_view, name="download_excel"),

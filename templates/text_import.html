@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>📄 Text/PDF to Excel Table (AI-Powered)</h2>
+    <p>Upload a .txt or .pdf file. AI will automatically detect columns and convert to a table.</p>
+
+    <form method="post" enctype="multipart/form-data" class="mt-3">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Upload & Convert</button>
+    </form>
+
+    {% if error %}
+        <div class="alert alert-danger mt-3">{{ error }}</div>
+    {% endif %}
+
+    {% if preview_rows %}
+        <hr>
+        <h3>Preview (first 10 rows)</h3>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        {% for cell in preview_rows.0 %}
+                            <th>{{ cell }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in preview_rows|slice:"1:11" %}
+                        <tr>
+                            {% for cell in row %}
+                                <td>{{ cell }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p>Total rows: {{ preview_rows|length }}</p>
+        <a href="{% url 'download_ai_excel' %}" class="btn btn-success">⬇️ Download as Excel</a>
+    {% endif %}
+</div>
+{% endblock %}

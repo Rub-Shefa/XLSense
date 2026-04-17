@@ -4,6 +4,7 @@ import ast
 import os
 import time
 from unicodedata import normalize
+from urllib import request
 from wsgiref import headers
 import pandas as pd
 from django.utils import timezone
@@ -36,7 +37,7 @@ from .models import (
 from .forms import CustomUserCreationForm
 from django.http import HttpResponse
 from io import BytesIO
-
+from .text_import_views import extract_text_from_pdf, call_ai_to_csv, parse_csv_to_rows
 
 def is_admin(user):
     return user.is_staff or user.is_superuser
@@ -53,35 +54,66 @@ def redirectBasedOnRole(user):
 
 def detect_column_types(df):
     detected_types = {}
-
     for column in df.columns:
         sample = df[column].dropna()
-
         if sample.empty:
             detected_types[column] = "Empty"
             continue
-
         total = len(sample)
 
+        # Numeric check (strict)
         numeric_converted = pd.to_numeric(sample, errors="coerce")
         numeric_ratio = numeric_converted.notna().sum() / total
-
         if numeric_ratio > 0.8:
             detected_types[column] = "Numeric"
             continue
 
-        date_converted = pd.to_datetime(sample, errors="coerce", dayfirst=True)
-        date_ratio = date_converted.notna().sum() / total
+        # Check if column contains date-like patterns (e.g., '/', '-', month names)
+        sample_str = sample.astype(str)
+        date_pattern = sample_str.str.contains(r'[/\-]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december', case=False, na=False)
+        has_date_pattern = date_pattern.any()
 
-        if date_ratio > 0.7:
+        date_ratio = 0
+        if has_date_pattern:
+            # Try with dayfirst=True
+            try:
+                date_converted = pd.to_datetime(sample, errors='coerce', dayfirst=True)
+                date_ratio = date_converted.notna().sum() / total
+            except:
+                pass
+            
+            # Try explicit formats
+            if date_ratio < 0.4:
+                for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d %B %Y", "%B %d, %Y", "%d-%m-%Y"]:
+                    try:
+                        date_converted = pd.to_datetime(sample, format=fmt, errors='coerce')
+                        ratio = date_converted.notna().sum() / total
+                        if ratio > date_ratio:
+                            date_ratio = ratio
+                        if date_ratio >= 0.4:
+                            break
+                    except:
+                        continue
+            
+            # Try pandas guess
+            if date_ratio < 0.4:
+                try:
+                    date_converted = pd.to_datetime(sample, errors='coerce')
+                    ratio = date_converted.notna().sum() / total
+                    if ratio > date_ratio:
+                        date_ratio = ratio
+                except:
+                    pass
+
+        # Final classification
+        if date_ratio >= 0.4:
             detected_types[column] = "Date"
         elif numeric_ratio > 0.2:
             detected_types[column] = "Mixed"
         else:
             detected_types[column] = "Text"
-
+    
     return detected_types
-
 
 def preprocess_dataframe(df):
     # clean column names
@@ -294,25 +326,96 @@ def upload_file_view(request):
                     df = pd.read_excel(file)
                 
                 else:
-                     # For PDF/TXT — just save, no processing
+                    # ----- AI conversion with fallback -----
+                    used_fallback = False
+                    try:
+                        # Extract text
+                        if file.name.endswith('.pdf'):
+                            raw_text = extract_text_from_pdf(file)
+                        else:  # .txt
+                            file.seek(0)
+                            raw_text = file.read().decode('utf-8', errors='ignore')
+        
+                        if not raw_text.strip():
+                            raise ValueError("No text extracted from file")
+        
+                        # Try AI first
+                        csv_data = call_ai_to_csv(raw_text)
+                        rows = parse_csv_to_rows(csv_data)
+                        if not rows:
+                            raise ValueError("AI returned empty table")
+                    except Exception as ai_error:
+                        # AI failed – use fallback parser
+                        print(f"AI failed: {ai_error}, using fallback parser")
+                        used_fallback = True
+                        # Simple fallback: split lines by whitespace
+                        fallback_rows = []
+                        for line in raw_text.strip().splitlines():
+                            if line.strip():
+                                cols = line.split()
+                                if cols:
+                                    fallback_rows.append(cols)
+                        if not fallback_rows:
+                            raise ValueError("Fallback could not parse text")
+                        # Assume first row is header
+                        rows = fallback_rows
+                    
+                    # Convert rows to DataFrame
+                    if len(rows) > 0:
+                        df = pd.DataFrame(rows[1:], columns=rows[0])  # first row as header
+                    else:
+                        raise ValueError("No data rows")
+        
+                    # Apply preprocessing
+                    df = preprocess_dataframe(df)
+                    df = remove_empty_unnamed_columns(df)
+        
+                    if df.empty:
+                        raise ValueError("No valid data after preprocessing")
+        
+                    # Save as Excel
+                    excel_buffer = BytesIO()
+                    df.to_excel(excel_buffer, index=False)
+                    excel_buffer.seek(0)
+                    base_name = file.name.rsplit('.', 1)[0]
+                    excel_name = f"{base_name}_converted.xlsx"
+                    uploaded_file.file.save(excel_name, ContentFile(excel_buffer.getvalue()))
                     uploaded_file.status = "Completed"
                     uploaded_file.processed_time = timezone.now()
                     uploaded_file.save()
-
-                    parsed_files.append(    
-                        {
+        
+                    # Generate preview data
+                    preview_data = df.fillna("").values.tolist()
+                    columns = list(df.columns)
+                    detected_types = detect_column_types(df)
+        
+                    # Validate using existing rules
+                    validate_excel_data(uploaded_file)
+        
+                    parsed_files.append({
                         "id": uploaded_file.id,
-                        "file_name": file.name,
-                        "preview_data": None,
-                        "columns": [],
-                        "detected_types": None,
-                        
-                        }
-                    )
-
-                    continue
-
-                df = preprocess_dataframe(df)
+                        "file_name": excel_name,
+                        "preview_data": preview_data,
+                        "columns": columns,
+                        "detected_types": detected_types,
+                    })
+        
+                    # Log with fallback info
+                    if used_fallback:
+                        AuditLog.objects.create(
+                            user=request.user,
+                            action_type="File Upload",
+                            details=f"Converted {file.name} using FALLBACK parser (AI failed) | Domain: {selected_domain}",
+                        )
+                        # Add a warning message that will be shown after redirect
+                        messages.warning(request, f"{file.name}: AI service unavailable. Used basic text parser. Table may be less accurate.")
+                    else:
+                        AuditLog.objects.create(
+                            user=request.user,
+                            action_type="File Upload",
+                            details=f"Converted {file.name} to structured Excel using AI | Domain: {selected_domain}",
+                        )
+                    continue   # skip the Excel/CSV processing below
                 df = remove_empty_unnamed_columns(df)
 
                 if df.empty:
@@ -362,6 +465,8 @@ def upload_file_view(request):
 
                 messages.error(request, f"{file.name} failed to process.")
 
+        # Remove original text/PDF files from preview (keep only converted Excel)
+        parsed_files = [item for item in parsed_files if not item['file_name'].lower().endswith(('.txt', '.pdf'))]
         request.session["parsed_files"] = parsed_files
 
         if success_count > 0:
@@ -371,7 +476,10 @@ def upload_file_view(request):
 
     parsed_files = request.session.get("parsed_files", None)
 
-    if not latest_upload:
+    # Hide latest_upload if we have parsed_files to avoid double preview
+    if parsed_files:
+        latest_upload = None
+    elif not latest_upload:
         request.session.pop("parsed_files", None)
         parsed_files = None
 
