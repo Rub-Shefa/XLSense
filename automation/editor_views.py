@@ -5,6 +5,7 @@ import ast
 import pandas as pd
 from io import BytesIO
 import difflib
+import openpyxl
 
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -15,8 +16,7 @@ from django.core.files.base import ContentFile
 
 # Import your models and utils
 from .models import UploadedFile, ValidationRule, FormulaRule
-from .utils import preprocess_dataframe, remove_empty_unnamed_columns
-
+from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns
 
 @login_required
 def workbook_editor_view(request, file_id):
@@ -24,20 +24,12 @@ def workbook_editor_view(request, file_id):
     template = uploaded_file.template
     file_path = uploaded_file.file.path
 
-    # Get domain columns
-    val_cols = list(
-        ValidationRule.objects.filter(template=template).values_list(
-            "column_name", flat=True
-        )
-    )
-    form_cols = list(
-        FormulaRule.objects.filter(template=template).values_list(
-            "target_column", flat=True
-        )
-    )
+    # Get domain columns (same as before)
+    val_cols = list(ValidationRule.objects.filter(template=template).values_list("column_name", flat=True))
+    form_cols = list(FormulaRule.objects.filter(template=template).values_list("target_column", flat=True))
     db_columns = list(set(val_cols + form_cols))
 
-    # Smart normalization function
+    # Helper functions (normalize, find_matching_db_column, etc.) – same as before
     def normalize(col):
         col = str(col).lower()
         col = re.sub(r"[ _()%\.\-/]", "", col)
@@ -45,101 +37,143 @@ def workbook_editor_view(request, file_id):
 
     def find_matching_db_column(file_col, db_columns):
         file_norm = normalize(file_col)
-
         for db_col in db_columns:
             db_norm = normalize(db_col)
-
-            # 1. Exact match
             if db_norm == file_norm:
                 return db_col
-
-            # 2. Substring match
             if db_norm in file_norm or file_norm in db_norm:
                 return db_col
-
-            # 3. Dynamic similarity match (Catches typos and overlaps)
             similarity = difflib.SequenceMatcher(None, db_norm, file_norm).ratio()
             if similarity >= 0.65:
                 return db_col
-
         return None
 
     saved_mappings = getattr(uploaded_file, "column_mappings", {})
 
     try:
-        if file_path.endswith(".csv"):
-            df = pd.read_csv(file_path)
-        else:
-            df = pd.read_excel(file_path)
+        from openpyxl import load_workbook
+        wb_formula = load_workbook(file_path, data_only=False)
+        ws_formula = wb_formula.active
+        wb_value = load_workbook(file_path, data_only=True)
+        ws_value = wb_value.active
 
-        df = preprocess_dataframe(df)
-        df = remove_empty_unnamed_columns(df)
-        df = df.dropna(how="all")
+        # Extract header (first row)
+        headers = []
+        for cell_f, cell_v in zip(next(ws_formula.iter_rows(min_row=1, max_row=1)), 
+                                   next(ws_value.iter_rows(min_row=1, max_row=1))):
+            headers.append(cell_v.value if cell_v.value is not None else "")
+
+        # Data rows (from row 2 onward)
+        raw_values = []
+        raw_formulas = []
+        for row_f, row_v in zip(ws_formula.iter_rows(min_row=2), ws_value.iter_rows(min_row=2)):
+            val_row = []
+            formula_row = []
+            for cell_f, cell_v in zip(row_f, row_v):
+                val_row.append(cell_v.value if cell_v.value is not None else "")
+                if isinstance(cell_f.value, str) and cell_f.value.startswith('='):
+                    formula_row.append(cell_f.value)
+                else:
+                    formula_row.append(None)
+            raw_values.append(val_row)
+            raw_formulas.append(formula_row)
+
+        # Create DataFrames with proper column names
+        df = pd.DataFrame(raw_values, columns=headers)
+        formulas_df = pd.DataFrame(raw_formulas, columns=headers)
+
+                # ---- Improved cleaning with .values to avoid alignment errors ----
+        # 1. Remove unnamed and fully empty columns
+        unnamed_mask = df.columns.astype(str).str.lower().str.contains("unnamed")
+        empty_cols = (df.isna().sum() == len(df))
+        cols_to_drop = unnamed_mask & empty_cols
+        df = df.loc[:, ~cols_to_drop]
+        formulas_df = formulas_df.loc[:, ~cols_to_drop]
+
+        # 2. Rename columns (both DataFrames get same new names)
+        new_cols = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+        df.columns = new_cols
+        formulas_df.columns = new_cols
+
+        # 3. Trim string values in df
+        for col in df.columns:
+            if pd.api.types.is_object_dtype(df[col]):
+                df[col] = df[col].astype(str).str.strip()
+                df[col] = df[col].replace("nan", pd.NA)
+
+        # 4. Remove rows that are completely empty (all NaN)
+        empty_rows = df.isna().all(axis=1)
+        # Convert to numpy array to avoid index alignment issues
+        empty_rows_arr = empty_rows.values
+        df = df[~empty_rows_arr]
+        formulas_df = formulas_df[~empty_rows_arr]
+
+        # 5. Remove rows with only one non-empty value
+        row_non_na = df.count(axis=1).values  # numpy array
+        rows_to_keep = row_non_na > 1
+        df = df[rows_to_keep]
+        formulas_df = formulas_df[rows_to_keep]
+
+        # Reset index after row removal
         df = df.reset_index(drop=True)
+        formulas_df = formulas_df.reset_index(drop=True)
 
         user_columns_original = list(df.columns)
-        columns_with_classes = []
 
+        # Column mapping (AI + fallback) – unchanged
+        columns_with_classes = []
+        ai_matches = {}
+        if not saved_mappings:
+            ai_matches = ai_match_columns(user_columns_original, db_columns)
         for col in user_columns_original:
-            matched_db = find_matching_db_column(col, db_columns)
-            if matched_db:
-                columns_with_classes.append(
-                    {"name": col, "class": "header-matched", "matched_db": matched_db}
-                )
+            matched_db = None
+            if saved_mappings and col in saved_mappings:
+                matched_db = saved_mappings[col]
+            elif not saved_mappings and ai_matches.get(col):
+                matched_db = ai_matches[col]
             else:
-                columns_with_classes.append(
-                    {"name": col, "class": "header-custom", "matched_db": None}
-                )
+                matched_db = find_matching_db_column(col, db_columns)
+            if matched_db:
+                columns_with_classes.append({"name": col, "class": "header-matched", "matched_db": matched_db})
+            else:
+                columns_with_classes.append({"name": col, "class": "header-custom", "matched_db": None})
 
         # Add missing domain columns (only if no saved mappings)
         if not saved_mappings:
-            matched_cols = [
-                c["matched_db"] for c in columns_with_classes if c["matched_db"]
-            ]
+            matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
             for db_col in db_columns:
                 if db_col not in matched_cols and db_col not in df.columns:
                     df[db_col] = "-"
-                    columns_with_classes.append(
-                        {
-                            "name": db_col,
-                            "class": "header-template-only",
-                            "matched_db": None,
-                        }
-                    )
+                    formulas_df[db_col] = None
+                    columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": None})
 
         current_columns = [c["name"] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
+        formulas_data = formulas_df.fillna("").values.tolist()
 
     except Exception as e:
-        print(f"ERROR: {e}")
         import traceback
         traceback.print_exc()
         return HttpResponse(f"Error loading file: {e}")
 
-    # YOUR ORIGINAL, WORKING LOAD LOGIC
     saved_mappings_json = json.dumps(saved_mappings)
-
-    # REMOVED my ast hacks! Django natively loads JSONFields into lists.
     style_data = getattr(uploaded_file, "style_data", [])
-    if not style_data: 
+    if not style_data:
         style_data = []
-        
     style_data_json = json.dumps(style_data)
+    formulas_data_json = json.dumps(formulas_data)
 
-    return render(
-        request,
-        "workbook_editor.html",
-        {
-            "file": uploaded_file,
-            "current_columns": current_columns,
-            "columns_with_classes": columns_with_classes,
-            "db_columns": db_columns,
-            "user_columns": user_columns_original,
-            "preview_data": preview_data,
-            "saved_mappings_json": saved_mappings_json,
-            "style_data_json": style_data_json,
-        },
-    )
+    return render(request, "workbook_editor.html", {
+        "file": uploaded_file,
+        "current_columns": current_columns,
+        "columns_with_classes": columns_with_classes,
+        "db_columns": db_columns,
+        "user_columns": user_columns_original,
+        "preview_data": preview_data,
+        "saved_mappings_json": saved_mappings_json,
+        "style_data_json": style_data_json,
+        "formulas_data_json": formulas_data_json,
+    })
 
 
 @csrf_exempt

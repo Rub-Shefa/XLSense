@@ -8,6 +8,61 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 
+def ai_match_columns(file_columns, db_columns, api_key=None, api_url=None, model=None):
+    """
+    Use Groq/OpenAI API to find best matches between file columns and DB columns.
+    Returns a dict: {file_column: best_db_column} for columns where confidence > threshold.
+    """
+    if not file_columns or not db_columns:
+        return {}
+    
+    api_key = api_key or os.environ.get("AI_API_KEY")
+    api_url = api_url or os.environ.get("AI_API_URL", "https://api.groq.com/openai/v1/chat/completions")
+    model = model or os.environ.get("AI_MODEL", "llama3-70b-8192")
+    
+    if not api_key:
+        print("AI column matching skipped: no API key")
+        return {}
+    
+    prompt = f"""You are a data mapping expert. Match each column from the user's file to the most suitable column from the database schema.
+User file columns: {file_columns}
+Database expected columns: {db_columns}
+
+Return ONLY a JSON object mapping each user column to the best matching database column. Use exact strings from the lists.
+If no good match exists, map to null.
+Example output: {{"Student Name": "full_name", "ID": "student_id", "Extra": null}}
+
+Now return the JSON mapping."""
+    
+    try:
+        response = requests.post(
+            api_url,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=15
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        # Extract JSON from response (sometimes markdown wrapped)
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        mapping = json.loads(content)
+        # Validate keys are in file_columns, values in db_columns or null
+        valid_mapping = {}
+        for fc in file_columns:
+            if fc in mapping and mapping[fc] in db_columns:
+                valid_mapping[fc] = mapping[fc]
+        return valid_mapping
+    except Exception as e:
+        print(f"AI column matching failed: {e}")
+        return {}
+
 def find_best_column(rule_name, excel_columns):
     rule_clean = str(rule_name).strip().lower().replace(" ", "")
     standard_map = {}
@@ -33,7 +88,6 @@ def find_best_column(rule_name, excel_columns):
 
 
 def validate_excel_data(uploaded_file_obj):
-    # FIX: Added local imports to stop the "Undefined Variable" errors
     from .models import ValidationRule, FormulaRule, ValidationResult
 
     file_path = uploaded_file_obj.file.path
@@ -48,10 +102,32 @@ def validate_excel_data(uploaded_file_obj):
     rules = ValidationRule.objects.filter(template=template)
     formula_rules = FormulaRule.objects.filter(template=template)
 
+    # Collect all distinct column names needed from both validation and formula rules
+    needed_columns = set()
+    for rule in rules:
+        needed_columns.add(rule.column_name)
+    for f_rule in formula_rules:
+        needed_columns.add(f_rule.target_column)
+    db_columns = list(needed_columns)
+
+    # Use AI to get a mapping from file columns to database columns (only if columns exist)
+    file_columns = list(df.columns)
+    ai_mapping = {}
+    if file_columns and db_columns:
+        ai_mapping = ai_match_columns(file_columns, db_columns)  # dict {file_col: db_col}
+    
+    # Build reverse mapping: db_column -> actual file column (from AI)
+    reverse_map = {}
+    for file_col, db_col in ai_mapping.items():
+        reverse_map[db_col] = file_col
+
     for index, row in df.iterrows():
         # --- PART A: LOGIC VALIDATION ---
         for rule in rules:
-            actual_col = find_best_column(rule.column_name, df.columns)
+            # Try AI mapping first, then fallback to fuzzy matching
+            actual_col = reverse_map.get(rule.column_name)
+            if not actual_col:
+                actual_col = find_best_column(rule.column_name, df.columns)
             if actual_col:
                 raw_val = row[actual_col]
 
@@ -59,7 +135,6 @@ def validate_excel_data(uploaded_file_obj):
                     val = 0
                 else:
                     try:
-                        # FIX: Added 'coerce' to handle the Date format warning/crash
                         if "date" in str(actual_col).lower():
                             val = pd.to_datetime(raw_val, errors="coerce")
                         else:
@@ -89,7 +164,7 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=rule.error_message,
                             is_valid=False,
                         )
-                except Exception as e:
+                except Exception:
                     continue
 
         # --- PART B: FORMULA AUDIT ---
@@ -97,15 +172,17 @@ def validate_excel_data(uploaded_file_obj):
             str(k).replace(" ", ""): (0 if pd.isna(v) or v == "" else v)
             for k, v in row.items()
         }
+
         for f_rule in formula_rules:
-            actual_target_col = find_best_column(f_rule.target_column, df.columns)
+            actual_target_col = reverse_map.get(f_rule.target_column)
+            if not actual_target_col:
+                actual_target_col = find_best_column(f_rule.target_column, df.columns)
             if actual_target_col:
                 try:
                     excel_val = row[actual_target_col]
                     expected_val = eval(
                         f_rule.condition_expression, {"__builtins__": None}, row_context
                     )
-
                     if str(excel_val).strip() != str(expected_val).strip():
                         ValidationResult.objects.create(
                             file=uploaded_file_obj,
@@ -114,10 +191,12 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=f"Math Error: Expected {expected_val}, found {excel_val}.",
                             is_valid=False,
                         )
-                except:
+                except NameError:
                     continue
-    return True
+                except Exception:
+                    continue
 
+    return True
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     # FIX: Added local import

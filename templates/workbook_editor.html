@@ -10,46 +10,6 @@
     <link rel="stylesheet" href="{% static 'css/editor_styles.css' %}">
     <link href="https://fonts.googleapis.com/css2?family=Arial&family=Calibri&family=Cambria&family=Comic+Sans+MS&family=Courier+New&family=Georgia&family=Impact&family=Tahoma&family=Times+New+Roman&family=Trebuchet+MS&family=Verdana&display=swap" rel="stylesheet">
 </head>
-
-{% if "_edited" in file.file.name %}
-<script>
-    window.addEventListener('load', function() {
-        const headers = Array.from(document.querySelectorAll('#headerRow th'));
-        const indicesToRemove = [];
-
-        // 1. Find ONLY the extra template headers (blue columns), save their index, and delete them
-        headers.forEach((th, index) => {
-            if (th.classList.contains('header-template-only')) {
-                indicesToRemove.push(index);
-                th.remove(); 
-            }
-        });
-
-        // 2. Go through every data row and delete the corresponding empty cells for those columns
-        document.querySelectorAll('#tableBody tr').forEach(tr => {
-            const cells = Array.from(tr.children);
-            // Delete from right to left so index numbers don't shift!
-            for (let i = indicesToRemove.length - 1; i >= 0; i--) {
-                const colIndex = indicesToRemove[i];
-                if (cells[colIndex]) {
-                    cells[colIndex].remove();
-                }
-            }
-        });
-
-        // 3. Update the column count at the bottom of the screen
-        if (typeof updateStatusBar === "function") {
-            updateStatusBar();
-        }
-        
-        // 4. Capture the new clean state so the "Undo" button works correctly
-        if (typeof captureState === "function") {
-            captureState();
-        }
-    });
-</script>
-{% endif %}
-
 <body>
 
 <div class="excel-ribbon">
@@ -152,7 +112,10 @@
 <div class="formula-bar">
     <div class="fx-label"><i class="fas fa-fx"></i> FX</div>
     <div class="cell-ref" id="activeCellRef">A1</div>
-    <input type="text" class="fx-input" id="formulaInput" placeholder="Enter formula or value...">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+        <input type="text" class="fx-input" id="formulaInput" placeholder="Enter formula (e.g., =SUM(A1:A5))" style="font-family: monospace;">
+        <input type="text" class="fx-input" id="valueDisplay" placeholder="Result" readonly style="background: #f5f5f5; font-family: monospace;">
+    </div>
     <div class="func-buttons">
         <button class="func-btn" data-func="SUM">SUM</button>
         <button class="func-btn" data-func="AVERAGE">AVG</button>
@@ -213,7 +176,7 @@
         window.DJANGO_VARS = {
             savedMappings: {{ saved_mappings_json|safe|default:"{}" }},
             styleData: {{ style_data_json|safe|default:"[]" }},
-            
+            formulasData: {{ formulas_data_json|safe|default:"[]" }},
             saveUrl: "{% url 'save_workbook' file.id %}",
             uploadUrl: "{% url 'upload_file' %}",
             csrfToken: "{{ csrf_token }}"

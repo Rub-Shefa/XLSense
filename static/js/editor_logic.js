@@ -5,10 +5,10 @@ let historyStack = [];
 let redoStack = [];
 let activeCell = null;
 let cellFormulas = new Map();
-let lastStateJson = null; // Used to prevent duplicate history entries
+let lastStateJson = null; 
 let originalState = { fontFamily: '', fontSize: '', backgroundColor: '', color: '' };
-let isRestoring = false; // Put this with your other global variables
-
+let isRestoring = false; 
+let valueDisplay = document.getElementById('valueDisplay');
 // ==========================================
 // 2. UNDO / REDO SYSTEM
 // ==========================================
@@ -256,38 +256,60 @@ function setActiveCell(cell) {
         const formulaEl = document.getElementById('formulaInput');
         
         if (refEl) refEl.innerText = `${numToCol(colIdx)}${rowIdx}`;
-        if (formulaEl) formulaEl.value = cellFormulas.get(activeCell) || activeCell.innerText;
-
+        
+        // Show stored formula or empty
+        const storedFormula = cellFormulas.get(activeCell) || '';
+        if (formulaEl) {
+            formulaEl.value = storedFormula;
+            formulaEl.placeholder = storedFormula ? '' : 'Enter formula (e.g., =SUM(A1:A5))';
+        }
+        
+        // Update value display
+        updateValueDisplayForCell(activeCell);
+        
+        // Formatting toolbar (unchanged)
         const style = window.getComputedStyle(activeCell);
         let currentFont = activeCell.style.fontFamily || style.fontFamily || 'Inter';
         updateDropdownUI('fontDropdown', currentFont.split(',')[0].replace(/['"]/g, '').trim());
-
         let currentSize = activeCell.style.fontSize || style.fontSize || '14px';
         const sizeInput = document.getElementById('customSizeInput');
-        if (sizeInput) {
-            sizeInput.value = parseInt(currentSize) || 14;
-        } else {
-            updateDropdownUI('sizeDropdown', parseInt(currentSize));
-        }
-
+        if (sizeInput) sizeInput.value = parseInt(currentSize) || 14;
         const btnBold = document.querySelector('[data-cmd="bold"]');
         const btnItalic = document.querySelector('[data-cmd="italic"]');
         const btnUnderline = document.querySelector('[data-cmd="underline"]');
-
         if (btnBold) btnBold.classList.toggle('active-format', style.fontWeight === 'bold' || style.fontWeight === '700');
         if (btnItalic) btnItalic.classList.toggle('active-format', style.fontStyle === 'italic');
-        
         if (btnUnderline) {
             const isUnderline = style.textDecoration.includes('underline');
             const isDouble = style.textDecoration.includes('double');
-            
             btnUnderline.classList.toggle('active-format', isUnderline);
-            
-            // Show a visual line under the button so they know if it's single or double!
             if (isDouble) btnUnderline.style.borderBottom = "3px double #1e6f3f";
             else if (isUnderline) btnUnderline.style.borderBottom = "3px solid #1e6f3f";
             else btnUnderline.style.borderBottom = "none";
         }
+    } else {
+        const refEl = document.getElementById('activeCellRef');
+        const formulaEl = document.getElementById('formulaInput');
+        if (refEl) refEl.innerText = '';
+        if (formulaEl) formulaEl.value = '';
+        if (valueDisplay) valueDisplay.value = '';
+    }
+}
+
+function updateValueDisplayForCell(cell) {
+    if (!valueDisplay) return;
+    const formula = cellFormulas.get(cell);
+    if (formula && formula.startsWith('=')) {
+        const result = evaluateFormula(formula, getCellValueFromDOM);
+        if (result !== null && !isNaN(result)) {
+            valueDisplay.value = result;
+        } else {
+            // If evaluation fails (e.g., unsupported function like IF, SQRT),
+            // show the cell's current computed value (already in the DOM).
+            valueDisplay.value = cell.innerText.trim() || '(empty)';
+        }
+    } else {
+        valueDisplay.value = cell.innerText.trim() || '(empty)';
     }
 }
 
@@ -300,7 +322,18 @@ function attachCellEvents() {
 
     document.querySelectorAll('.editable-cell').forEach(cell => {
         cell.onfocus = () => setActiveCell(cell);
-        cell.onblur = () => captureState();
+        cell.onblur = () => {
+    captureState();
+    if (activeCell === cell) {
+        // If cell was manually edited, remove formula if it became plain text
+        const currentValue = cell.innerText.trim();
+        const storedFormula = cellFormulas.get(cell);
+        if (!currentValue.startsWith('=') && storedFormula) {
+            cellFormulas.delete(cell);
+        }
+        updateValueDisplayForCell(cell);
+    }
+};
     });
 }
 
@@ -316,6 +349,7 @@ function updateCellFromFormulaBar() {
         cellFormulas.delete(activeCell);
         activeCell.innerText = newValue;
     }
+    updateValueDisplayForCell(activeCell);
     captureState();
 }
 
@@ -327,6 +361,32 @@ if (fBar) {
         if (e.key === 'Enter') {
             updateCellFromFormulaBar();
             activeCell?.blur();
+        }
+    });
+}
+
+// Helper to insert text at cursor position in the formula input
+function insertAtCursor(input, text) {
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const value = input.value;
+    input.value = value.slice(0, start) + text + value.slice(end);
+    input.selectionStart = input.selectionEnd = start + text.length;
+    input.focus();
+}
+
+// Listen for clicks on any cell while formula input is focused
+const formulaInput = document.getElementById('formulaInput');
+if (formulaInput) {
+    document.addEventListener('click', (e) => {
+        // If the clicked element is an editable cell AND the formula input has focus
+        if (e.target.classList && e.target.classList.contains('editable-cell') && document.activeElement === formulaInput) {
+            e.preventDefault();
+            // Get cell reference (e.g., "A1")
+            const row = e.target.parentElement.rowIndex;
+            const col = e.target.cellIndex - 1;
+            const ref = numToCol(col) + row;
+            insertAtCursor(formulaInput, ref);
         }
     });
 }
@@ -679,7 +739,6 @@ async function saveData() {
 
         const payload = { headers, rows, mappings };
         console.log("🚀 STEP 1 (JS OUT): Sending this payload to Python ->", payload);
-        // Let's specifically check the first row's styling:
         console.log("🚀 STEP 1a (JS OUT - Check Row 1):", rows[0]);
 
         const res = await fetch(window.DJANGO_VARS.saveUrl, {
@@ -691,7 +750,10 @@ async function saveData() {
         const data = await res.json();
         if (res.ok) {
             showToast("Saved!", "success");
-            setTimeout(() => window.location.href = window.DJANGO_VARS.uploadUrl + "?processed_id=" + data.new_file_id + "&preview=true", 800);
+            setTimeout(() => {
+                const newId = data.new_file_id;
+                window.location.href = window.DJANGO_VARS.uploadUrl + "?preview_id=" + newId + "&_=" + Date.now();
+            }, 800); 
         } else { 
             showToast("Error: " + data.error, "error"); 
         }
@@ -723,12 +785,11 @@ function init() {
     const uiBtns = { 'addRowBtn': addRow, 'addColBtn': addColumn, 'undoBtn': undo, 'redoBtn': redo, 'saveProcessBtn': saveData };
     Object.entries(uiBtns).forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.onclick = fn; });
 
-    // --- THE FIX: AGGRESSIVELY UNWRAP DJANGO STRINGS ---
+    // --- Restore saved mappings (unchanged) ---
     let saved = window.DJANGO_VARS.savedMappings;
     while (typeof saved === 'string') {
         try { saved = JSON.parse(saved); } catch(e) { break; }
     }
-    
     if (saved && typeof saved === 'object') {
         document.querySelectorAll('#headerRow th:not(.row-header-cell)').forEach(th => {
             const label = th.querySelector('.header-label')?.innerText.trim();
@@ -739,11 +800,11 @@ function init() {
         });
     }
 
+    // --- Restore styles (unchanged) ---
     let styles = window.DJANGO_VARS.styleData;
     while (typeof styles === 'string') {
         try { styles = JSON.parse(styles); } catch(e) { break; }
     }
-
     if (styles && Array.isArray(styles)) {
         const trs = document.querySelectorAll('#tableBody tr');
         styles.forEach((row, ri) => {
@@ -751,13 +812,10 @@ function init() {
                 const tds = trs[ri].querySelectorAll('td.editable-cell');
                 row.forEach((c, ci) => {
                     if (tds[ci]) {
-                        // Re-apply all formatting safely
                         if (c.bold) tds[ci].style.fontWeight = 'bold';
                         if (c.italic) tds[ci].style.fontStyle = 'italic';
-                        
                         if (c.underline === 'double') tds[ci].style.textDecoration = 'underline double';
                         else if (c.underline === 'single' || c.underline === true) tds[ci].style.textDecoration = 'underline';
-                        
                         if (c.color) tds[ci].style.color = c.color;
                         if (c.bg) tds[ci].style.backgroundColor = c.bg;
                         if (c.fontFamily) tds[ci].style.fontFamily = c.fontFamily;
@@ -767,6 +825,26 @@ function init() {
             }
         });
     }
+
+    // ========== NEW: RESTORE FORMULAS ==========
+    let formulas = window.DJANGO_VARS.formulasData;
+    while (typeof formulas === 'string') {
+        try { formulas = JSON.parse(formulas); } catch(e) { break; }
+    }
+    if (formulas && Array.isArray(formulas)) {
+        const trs = document.querySelectorAll('#tableBody tr');
+        formulas.forEach((row, ri) => {
+            if (trs[ri]) {
+                const tds = trs[ri].querySelectorAll('td.editable-cell');
+                row.forEach((formula, ci) => {
+                    if (formula && tds[ci] && typeof formula === 'string' && formula.startsWith('=')) {
+                        cellFormulas.set(tds[ci], formula);
+                    }
+                });
+            }
+        });
+    }
+    if (activeCell) updateValueDisplayForCell(activeCell);
 
     captureState();
 

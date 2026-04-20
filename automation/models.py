@@ -49,7 +49,6 @@ class UploadedFile(models.Model):
     status = models.CharField(max_length=50, default="Pending")
     column_mappings = models.JSONField(default=dict, blank=True) 
     style_data = models.TextField(null=True, blank=True)
-    column_mappings = models.JSONField(null=True, blank=True)
 
     @property
     def short_name(self):

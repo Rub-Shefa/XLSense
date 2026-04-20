@@ -320,13 +320,62 @@ def upload_file_view(request):
             try:
                 file.seek(0)
 
-                if file.name.endswith(".csv"):
-                    df = pd.read_csv(file)
-                elif file.name.endswith(".xlsx"):
-                    df = pd.read_excel(file)
-                
+                # ---------- Excel / CSV files ----------
+                if file.name.endswith(".csv") or file.name.endswith(".xlsx"):
+                    if file.name.endswith(".csv"):
+                        df = pd.read_csv(file)
+                    else:
+                        df = pd.read_excel(file)
+
+                    print("=" * 50)
+                    print(f"File: {file.name}")
+                    print("Original columns:", list(df.columns))
+                    print("Original shape:", df.shape)
+
+                    # Apply preprocessing
+                    df = preprocess_dataframe(df)
+                    df = remove_empty_unnamed_columns(df)
+
+                    print("After cleaning columns:", list(df.columns))
+                    print("After cleaning shape:", df.shape)
+
+                    if df.empty:
+                        uploaded_file.status = "Failed"
+                        uploaded_file.save()
+                        messages.error(request, f"{file.name} has no valid data.")
+                        continue
+
+                    preview_data = df.fillna("").values.tolist()
+                    columns = list(df.columns)
+                    detected_types = detect_column_types(df)
+                    print("Detected types:", detected_types)
+
+                    uploaded_file.status = "Completed"
+                    uploaded_file.processed_time = timezone.now()
+                    uploaded_file.save()
+
+                    validate_excel_data(uploaded_file)
+
+                    parsed_files.append(
+                        {
+                            "id": uploaded_file.id,
+                            "file_name": file.name,
+                            "preview_data": preview_data,
+                            "columns": columns,
+                            "detected_types": detected_types,
+                        }
+                    )
+
+                    AuditLog.objects.create(
+                        user=request.user,
+                        action_type="File Upload",
+                        details=f"Successfully uploaded and parsed: {file.name} | Domain: {selected_domain}",
+                    )
+
+                    success_count += 1
+
+                # ---------- PDF / TXT files (AI conversion) ----------
                 else:
-                    # ----- AI conversion with fallback -----
                     used_fallback = False
                     try:
                         # Extract text
@@ -335,10 +384,10 @@ def upload_file_view(request):
                         else:  # .txt
                             file.seek(0)
                             raw_text = file.read().decode('utf-8', errors='ignore')
-        
+
                         if not raw_text.strip():
                             raise ValueError("No text extracted from file")
-        
+
                         # Try AI first
                         csv_data = call_ai_to_csv(raw_text)
                         rows = parse_csv_to_rows(csv_data)
@@ -359,20 +408,20 @@ def upload_file_view(request):
                             raise ValueError("Fallback could not parse text")
                         # Assume first row is header
                         rows = fallback_rows
-                    
+
                     # Convert rows to DataFrame
                     if len(rows) > 0:
                         df = pd.DataFrame(rows[1:], columns=rows[0])  # first row as header
                     else:
                         raise ValueError("No data rows")
-        
+
                     # Apply preprocessing
                     df = preprocess_dataframe(df)
                     df = remove_empty_unnamed_columns(df)
-        
+
                     if df.empty:
                         raise ValueError("No valid data after preprocessing")
-        
+
                     # Save as Excel
                     excel_buffer = BytesIO()
                     df.to_excel(excel_buffer, index=False)
@@ -383,15 +432,15 @@ def upload_file_view(request):
                     uploaded_file.status = "Completed"
                     uploaded_file.processed_time = timezone.now()
                     uploaded_file.save()
-        
+
                     # Generate preview data
                     preview_data = df.fillna("").values.tolist()
                     columns = list(df.columns)
                     detected_types = detect_column_types(df)
-        
+
                     # Validate using existing rules
                     validate_excel_data(uploaded_file)
-        
+
                     parsed_files.append({
                         "id": uploaded_file.id,
                         "file_name": excel_name,
@@ -399,7 +448,7 @@ def upload_file_view(request):
                         "columns": columns,
                         "detected_types": detected_types,
                     })
-        
+
                     # Log with fallback info
                     if used_fallback:
                         AuditLog.objects.create(
@@ -407,7 +456,6 @@ def upload_file_view(request):
                             action_type="File Upload",
                             details=f"Converted {file.name} using FALLBACK parser (AI failed) | Domain: {selected_domain}",
                         )
-                        # Add a warning message that will be shown after redirect
                         messages.warning(request, f"{file.name}: AI service unavailable. Used basic text parser. Table may be less accurate.")
                     else:
                         AuditLog.objects.create(
@@ -415,54 +463,16 @@ def upload_file_view(request):
                             action_type="File Upload",
                             details=f"Converted {file.name} to structured Excel using AI | Domain: {selected_domain}",
                         )
-                    continue   # skip the Excel/CSV processing below
-                df = remove_empty_unnamed_columns(df)
-
-                if df.empty:
-                    uploaded_file.status = "Failed"
-                    uploaded_file.save()
-                    messages.error(request, f"{file.name} has no valid data.")
-                    continue
-
-                preview_data = df.fillna("").values.tolist()
-                columns = list(df.columns)
-                detected_types = detect_column_types(df)
-
-                uploaded_file.status = "Completed"
-                uploaded_file.processed_time = timezone.now()
-                uploaded_file.save()
-
-                validate_excel_data(uploaded_file)
-
-                parsed_files.append(
-                    {
-                        "id": uploaded_file.id,
-                        "file_name": file.name,
-                        "preview_data": preview_data,
-                        "columns": columns,
-                        "detected_types": detected_types,
-                         
-                    }
-                )
-
-                AuditLog.objects.create(
-                    user=request.user,
-                    action_type="File Upload",
-                    details=f"Successfully uploaded and parsed: {file.name} | Domain: {selected_domain}",
-                )
-
-                success_count += 1
+                    continue   # skip the Excel/CSV processing below (already handled)
 
             except Exception as e:
                 uploaded_file.status = "Failed"
                 uploaded_file.save()
-
                 AuditLog.objects.create(
                     user=request.user,
                     action_type="Upload Error",
                     details=f"Failed to process {file.name}: {str(e)}",
                 )
-
                 messages.error(request, f"{file.name} failed to process.")
 
         # Remove original text/PDF files from preview (keep only converted Excel)

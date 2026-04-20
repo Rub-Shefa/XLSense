@@ -149,6 +149,11 @@ body {
    5. FORMULA BAR
    ========================================================================== */
 .formula-bar {
+    flex-wrap: wrap;
+}
+.fx-input {
+    width: 100%;
+}.formula-bar {
     background: #ffffff; border-bottom: 1px solid #e2e8f0;
     padding: 8px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
