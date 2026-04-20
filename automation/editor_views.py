@@ -82,7 +82,6 @@ def workbook_editor_view(request, file_id):
         df = pd.DataFrame(raw_values, columns=headers)
         formulas_df = pd.DataFrame(raw_formulas, columns=headers)
 
-                # ---- Improved cleaning with .values to avoid alignment errors ----
         # 1. Remove unnamed and fully empty columns
         unnamed_mask = df.columns.astype(str).str.lower().str.contains("unnamed")
         empty_cols = (df.isna().sum() == len(df))
@@ -103,7 +102,6 @@ def workbook_editor_view(request, file_id):
 
         # 4. Remove rows that are completely empty (all NaN)
         empty_rows = df.isna().all(axis=1)
-        # Convert to numpy array to avoid index alignment issues
         empty_rows_arr = empty_rows.values
         df = df[~empty_rows_arr]
         formulas_df = formulas_df[~empty_rows_arr]
@@ -157,9 +155,14 @@ def workbook_editor_view(request, file_id):
         return HttpResponse(f"Error loading file: {e}")
 
     saved_mappings_json = json.dumps(saved_mappings)
-    style_data = getattr(uploaded_file, "style_data", [])
-    if not style_data:
-        style_data = []
+    style_data_raw = getattr(uploaded_file, "style_data", [])
+    if isinstance(style_data_raw, str) and style_data_raw:
+        try:
+            style_data = json.loads(style_data_raw)
+        except:
+            style_data = []
+    else:
+        style_data = style_data_raw if style_data_raw else []
     style_data_json = json.dumps(style_data)
     formulas_data_json = json.dumps(formulas_data)
 
@@ -192,6 +195,9 @@ def save_workbook_data(request, file_id):
             
             headers = data.get("headers")
             rows = data.get("rows")
+            print(f"📥 Received rows count: {len(rows)}")
+            if rows:
+                 print(f"First row first cell sample: {rows[0][0] if rows[0] else 'empty'}")
             mappings = data.get("mappings", {})
 
             # 1. Get the original file
@@ -226,9 +232,12 @@ def save_workbook_data(request, file_id):
                     aligned_style_data.append(row)
 
             df = pd.DataFrame(clean_rows, columns=headers)
+            print(f"🔧 aligned_style_data length: {len(aligned_style_data)}")
+            if aligned_style_data:
+                print(f"First aligned row first cell: {aligned_style_data[0][0] if aligned_style_data[0] else 'empty'}")
             
-            # --- IMPORTANT: Convert list to JSON string for the DB ---
-            style_data = json.dumps(aligned_style_data) 
+            style_data = json.dumps(aligned_style_data)
+            print(f"📦 style_data JSON length: {len(style_data)} characters") 
             
             df = preprocess_dataframe(df)
             df = remove_empty_unnamed_columns(df)
@@ -242,9 +251,9 @@ def save_workbook_data(request, file_id):
             output = BytesIO()
             df.to_excel(output, index=False, engine="openpyxl")
             output.seek(0)
+            print(f"Saved style_data length: {len(style_data)}")
 
             # 6. Create BRAND NEW object
-            # Note: We don't set style_data here yet because file.save() might wipe it
             new_uploaded_file = UploadedFile(
                 user=request.user,
                 template=original_file.template,
@@ -253,14 +262,11 @@ def save_workbook_data(request, file_id):
             )
             
             # 7. Save the physical file first
-            # This creates the row in the database and gives us an ID
             new_uploaded_file.file.save(new_filename, ContentFile(output.read()), save=True)
 
             # --- STEP 3: THE RECOVERY SAVE ---
-            # Now that the file is safely on the disk, we FORCE the data into the DB
             print(f"💾 STEP 3: Forcing styles into New File ID: {new_uploaded_file.id}")
             
-            # Use .update() to bypass any Django model-saving weirdness
             UploadedFile.objects.filter(id=new_uploaded_file.id).update(
                 style_data=style_data,
                 column_mappings=mappings

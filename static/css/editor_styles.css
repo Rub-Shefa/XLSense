@@ -197,9 +197,21 @@ body {
 .excel-table th, .excel-table td { border: 1px solid #e2e8f0; padding: 0; }
 .excel-table th { background: #f9fbfd; font-weight: 600; position: sticky; top: 0; z-index: 20; min-width: 160px; }
 .excel-table td { padding: 8px 12px; background: white; outline: none; }
-.excel-table td:focus { background: #fffae6; border: 2px solid #1e6f3f; }
+.cell-active {
+    outline: 2px solid #1e6f3f !important;
+    outline-offset: -1px;
+}
 
-.cell-active { background-color: #fff3cf !important; box-shadow: inset 0 0 0 2px #f5b042; }
+.range-selected {
+    outline: 3px solid #1e6f3f !important;
+    outline-offset: -1px;
+}
+
+.excel-table td:focus {
+    outline: 2px solid #1e6f3f;
+    outline-offset: -1px;
+    background-color: inherit;
+}
 .row-header-cell { background: #f8fafc; text-align: center; width: 55px; position: sticky; left: 0; z-index: 10; }
 
 .row-delete-btn { background: none; border: none; cursor: pointer; color: #bac8d9; }

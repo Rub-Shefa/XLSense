@@ -4,11 +4,16 @@
 let historyStack = [];
 let redoStack = [];
 let activeCell = null;
+let selectedCells = []; // array of DOM cells currently selected (excluding activeCell)
 let cellFormulas = new Map();
-let lastStateJson = null; 
+let lastStateJson = null;
 let originalState = { fontFamily: '', fontSize: '', backgroundColor: '', color: '' };
-let isRestoring = false; 
+let isRestoring = false;
 let valueDisplay = document.getElementById('valueDisplay');
+let isDragging = false;
+let dragStartCell = null;
+let lastDragCell = null;
+
 // ==========================================
 // 2. UNDO / REDO SYSTEM
 // ==========================================
@@ -30,7 +35,6 @@ function captureState() {
         document.querySelectorAll('#tableBody tr').forEach(tr => {
             const rowData = [];
             tr.querySelectorAll('td.editable-cell').forEach(td => {
-                // SAFETY: Check if 'td' exists before accessing .innerText or .style
                 rowData.push({
                     text: td ? td.innerText : '',
                     style: td ? td.style.cssText : '',
@@ -46,8 +50,8 @@ function captureState() {
         if (currentStateJson !== lastStateJson) {
             historyStack.push(currentState);
             lastStateJson = currentStateJson;
-            redoStack = []; 
-            if (historyStack.length > 50) historyStack.shift(); 
+            redoStack = [];
+            if (historyStack.length > 50) historyStack.shift();
         }
     } catch (e) {
         console.warn("Capture state error (Caught):", e);
@@ -56,20 +60,16 @@ function captureState() {
 
 function restoreState(state) {
     if (!state) return;
-    
     isRestoring = true;
 
     try {
         const headerRow = document.getElementById('headerRow');
         if (!headerRow) return;
-        
-        // 1. Restore Headers Structure
-        const rowHeaderCell = headerRow.querySelector('.row-header-cell'); 
-        let newHeaderHtml = rowHeaderCell ? rowHeaderCell.outerHTML : ''; 
+        const rowHeaderCell = headerRow.querySelector('.row-header-cell');
+        let newHeaderHtml = rowHeaderCell ? rowHeaderCell.outerHTML : '';
         state.headers.forEach(h => { newHeaderHtml += h.outerHTML; });
-        headerRow.innerHTML = newHeaderHtml; 
+        headerRow.innerHTML = newHeaderHtml;
 
-        // 2. Sync Select values
         const selects = headerRow.querySelectorAll('.mapping-select');
         const labels = headerRow.querySelectorAll('.header-label');
         state.headers.forEach((h, idx) => {
@@ -79,7 +79,6 @@ function restoreState(state) {
             if (th) th.className = h.selectedValue ? 'header-matched' : 'header-custom';
         });
 
-        // 3. Clear and Rebuild Body
         const tbody = document.getElementById('tableBody');
         if (!tbody) return;
         tbody.innerHTML = '';
@@ -88,11 +87,9 @@ function restoreState(state) {
         state.rows.forEach((row, ri) => {
             const tr = document.createElement('tr');
             let html = `<td class="row-header-cell"><span style="font-size:0.7rem;">${ri+1}</span><button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button></td>`;
-            
-            row.forEach(cellData => { 
-                // THE FIX: Escape double quotes in the style string so it doesn't break the HTML attribute!
+            row.forEach(cellData => {
                 const safeStyle = (cellData.style || '').replace(/"/g, '&quot;');
-                html += `<td contenteditable="true" class="editable-cell" style="${safeStyle}">${escapeHtml(cellData.text)}</td>`; 
+                html += `<td contenteditable="true" class="editable-cell" style="${safeStyle}">${escapeHtml(cellData.text)}</td>`;
             });
             tr.innerHTML = html;
             tbody.appendChild(tr);
@@ -105,22 +102,21 @@ function restoreState(state) {
             });
         });
 
-        // 4. Cleanup
         attachCellEvents();
         updateStatusBar();
         renumberRows();
         lastStateJson = JSON.stringify(state);
-        activeCell = null; 
+        activeCell = null;
+        clearSelection();
     } catch (e) {
         console.error("Critical error during Undo restoration:", e);
-    }
-    finally {
-        setTimeout(() => { isRestoring = false; }, 10); 
+    } finally {
+        setTimeout(() => { isRestoring = false; }, 10);
     }
 }
 
 function undo() {
-    if (historyStack.length < 2) return; // Need at least the current state and one previous
+    if (historyStack.length < 2) return;
     const current = historyStack.pop();
     redoStack.push(current);
     const prev = historyStack[historyStack.length - 1];
@@ -134,45 +130,163 @@ function redo() {
     restoreState(next);
 }
 
-function escapeHtml(str) { 
+function escapeHtml(str) {
     if (typeof str !== 'string') return '';
-    return str.replace(/[&<>]/g, function(m){ 
-        if(m==='&') return '&amp;'; 
-        if(m==='<') return '&lt;'; 
-        if(m==='>') return '&gt;'; 
-        return m;
-    }); 
+    return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;'));
 }
 
 // ==========================================
-// 3. ENHANCED FORMULA EVALUATION
+// 3. ENHANCED FORMULA EVALUATION (with IF, COUNTIF, COUNTA, XLOOKUP, VLOOKUP)
 // ==========================================
 function evaluateFormula(formula, getCellValue) {
     if (!formula.startsWith('=')) return null;
     const expr = formula.substring(1).trim();
 
-    const funcMatch = expr.match(/^(SUM|AVERAGE|COUNT|MAX|MIN)\((.*)\)$/i);
+    // Match function calls: FUNCTION(arguments)
+    const funcMatch = expr.match(/^([A-Z_]+)\((.*)\)$/i);
     if (funcMatch) {
         const func = funcMatch[1].toUpperCase();
         const argsString = funcMatch[2];
         const args = parseArguments(argsString);
-        let allValues = [];
-        for (let arg of args) {
-            if (arg.includes(':')) {
-                const [start, end] = arg.split(':');
-                const values = getRangeValues(start, end, getCellValue);
-                allValues.push(...values);
+        
+        // Existing functions
+        if (['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN'].includes(func)) {
+            let allValues = [];
+            for (let arg of args) {
+                if (arg.includes(':')) {
+                    const [start, end] = arg.split(':');
+                    const values = getRangeValues(start, end, getCellValue);
+                    allValues.push(...values);
+                } else {
+                    let val = getCellValue(arg);
+                    if (!isNaN(val) && val !== "" && val !== null) allValues.push(Number(val));
+                }
+            }
+            if (func === 'SUM') return allValues.reduce((a,b)=>a+b,0);
+            if (func === 'AVERAGE') return allValues.length ? allValues.reduce((a,b)=>a+b,0)/allValues.length : 0;
+            if (func === 'COUNT') return allValues.length;
+            if (func === 'MAX') return allValues.length ? Math.max(...allValues) : 0;
+            if (func === 'MIN') return allValues.length ? Math.min(...allValues) : 0;
+        }
+        
+        // IF(condition, value_if_true, value_if_false)
+        if (func === 'IF') {
+            if (args.length < 2) return '#ERROR';
+            let condition = args[0];
+            let trueVal = args[1];
+            let falseVal = args.length > 2 ? args[2] : '';
+            // evaluate condition
+            let condResult;
+            try {
+                // condition may be a comparison like "A1>5"
+                let condExpr = condition.replace(/[A-Z]+[0-9]+/gi, (ref) => {
+                    let val = getCellValue(ref);
+                    return isNaN(val) ? `"${val}"` : val;
+                });
+                condResult = Function('"use strict";return (' + condExpr + ')')();
+            } catch(e) { condResult = false; }
+            if (condResult) {
+                // evaluate true part
+                if (trueVal.match(/[A-Z]+[0-9]+/)) {
+                    let val = getCellValue(trueVal);
+                    return val !== null ? val : trueVal;
+                }
+                return trueVal;
             } else {
-                let val = getCellValue(arg);
-                if (!isNaN(val) && val !== "" && val !== null) allValues.push(Number(val));
+                if (falseVal.match(/[A-Z]+[0-9]+/)) {
+                    let val = getCellValue(falseVal);
+                    return val !== null ? val : falseVal;
+                }
+                return falseVal;
             }
         }
-        if (func === 'SUM') return allValues.reduce((a, b) => a + b, 0);
-        if (func === 'AVERAGE') return allValues.length ? allValues.reduce((a, b) => a + b, 0) / allValues.length : 0;
-        if (func === 'COUNT') return allValues.length;
-        if (func === 'MAX') return allValues.length ? Math.max(...allValues) : 0;
-        if (func === 'MIN') return allValues.length ? Math.min(...allValues) : 0;
+        
+        // COUNTIF(range, criteria)
+        if (func === 'COUNTIF') {
+            if (args.length < 2) return '#ERROR';
+            let range = args[0];
+            let criteria = args[1];
+            let cells = getCellsInRange(range, getCellValue);
+            let count = 0;
+            for (let cell of cells) {
+                let val = getCellValue(cell);
+                let match = false;
+                if (criteria.startsWith('>') || criteria.startsWith('<') || criteria.startsWith('=')) {
+                    let op = criteria.match(/[<>]=?/)[0];
+                    let target = parseFloat(criteria.slice(op.length));
+                    let num = parseFloat(val);
+                    if (isNaN(num)) continue;
+                    if (op === '>' && num > target) match = true;
+                    else if (op === '<' && num < target) match = true;
+                    else if (op === '>=' && num >= target) match = true;
+                    else if (op === '<=' && num <= target) match = true;
+                    else if (op === '=' && num == target) match = true;
+                } else {
+                    match = (val == criteria);
+                }
+                if (match) count++;
+            }
+            return count;
+        }
+        
+        // COUNTA(range)
+        if (func === 'COUNTA') {
+            if (args.length < 1) return '#ERROR';
+            let range = args[0];
+            let cells = getCellsInRange(range, getCellValue);
+            let count = 0;
+            for (let cell of cells) {
+                let val = getCellValue(cell);
+                if (val !== null && val !== "") count++;
+            }
+            return count;
+        }
+        
+        // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found])
+        if (func === 'XLOOKUP') {
+            if (args.length < 3) return '#ERROR';
+            let lookupValue = args[0];
+            let lookupArray = args[1];
+            let returnArray = args[2];
+            let ifNotFound = args.length > 3 ? args[3] : '#N/A';
+            let lookupCells = getCellsInRange(lookupArray, getCellValue);
+            let returnCells = getCellsInRange(returnArray, getCellValue);
+            for (let i = 0; i < lookupCells.length; i++) {
+                let val = getCellValue(lookupCells[i]);
+                if (val == lookupValue) {
+                    let retVal = getCellValue(returnCells[i]);
+                    return retVal !== null ? retVal : '#N/A';
+                }
+            }
+            return ifNotFound;
+        }
+        
+        // VLOOKUP(lookup_value, table_array, col_index_num, [range_lookup])
+        if (func === 'VLOOKUP') {
+            if (args.length < 3) return '#ERROR';
+            let lookupValue = args[0];
+            let tableArray = args[1];
+            let colIndex = parseInt(args[2]);
+            let rangeLookup = args.length > 3 ? args[3] : 'TRUE';
+            // tableArray is like "A1:C100"
+            let tableCells = getCellsInRange(tableArray, getCellValue);
+            let rows = tableCells.length / getColumnCount(tableArray);
+            for (let i = 0; i < rows; i++) {
+                let cellRef = tableCells[i]; // first column cell
+                let val = getCellValue(cellRef);
+                if (val == lookupValue) {
+                    let targetCellRef = tableCells[i + (colIndex-1)*rows];
+                    let retVal = getCellValue(targetCellRef);
+                    return retVal !== null ? retVal : '#N/A';
+                }
+            }
+            return '#N/A';
+        }
+        
+        return '#NAME?';
     }
+    
+    // Simple arithmetic (e.g., A1+B2)
     try {
         let evalExpr = expr.replace(/[A-Z]+[0-9]+/gi, (ref) => {
             let val = getCellValue(ref);
@@ -183,22 +297,27 @@ function evaluateFormula(formula, getCellValue) {
 }
 
 function parseArguments(argsString) {
-    let args = []; let current = ''; let depth = 0;
+    let args = [], current = '', depth = 0;
     for (let ch of argsString) {
         if (ch === '(') depth++;
         if (ch === ')') depth--;
-        if (ch === ',' && depth === 0) { args.push(current.trim()); current = ''; } 
-        else { current += ch; }
+        if (ch === ',' && depth === 0) {
+            args.push(current.trim());
+            current = '';
+        } else { current += ch; }
     }
     if (current.trim()) args.push(current.trim());
     return args;
 }
 
 function getRangeValues(start, end, getCellValue) {
-    const startCol = start.match(/[A-Z]+/)[0]; const startRow = parseInt(start.match(/[0-9]+/)[0]);
-    const endCol = end.match(/[A-Z]+/)[0]; const endRow = parseInt(end.match(/[0-9]+/)[0]);
+    const startCol = start.match(/[A-Z]+/)[0];
+    const startRow = parseInt(start.match(/[0-9]+/)[0]);
+    const endCol = end.match(/[A-Z]+/)[0];
+    const endRow = parseInt(end.match(/[0-9]+/)[0]);
     const values = [];
-    const startColNum = colToNum(startCol); const endColNum = colToNum(endCol);
+    const startColNum = colToNum(startCol);
+    const endColNum = colToNum(endCol);
     for (let r = startRow; r <= endRow; r++) {
         for (let c = startColNum; c <= endColNum; c++) {
             let val = getCellValue(numToCol(c) + r);
@@ -207,10 +326,50 @@ function getRangeValues(start, end, getCellValue) {
     }
     return values;
 }
-function colToNum(col) { let num = 0; for (let i = 0; i < col.length; i++) num = num * 26 + (col.charCodeAt(i) - 64); return num - 1; }
-function numToCol(num) { let col = ""; while (num >= 0) { col = String.fromCharCode(65 + (num % 26)) + col; num = Math.floor(num / 26) - 1; } return col; }
 
-/// ==========================================
+function getCellsInRange(range, getCellValue) {
+    let cells = [];
+    if (range.includes(':')) {
+        let [start, end] = range.split(':');
+        const startCol = start.match(/[A-Z]+/)[0];
+        const startRow = parseInt(start.match(/[0-9]+/)[0]);
+        const endCol = end.match(/[A-Z]+/)[0];
+        const endRow = parseInt(end.match(/[0-9]+/)[0]);
+        const startColNum = colToNum(startCol);
+        const endColNum = colToNum(endCol);
+        for (let r = startRow; r <= endRow; r++) {
+            for (let c = startColNum; c <= endColNum; c++) {
+                cells.push(numToCol(c) + r);
+            }
+        }
+    } else {
+        cells.push(range);
+    }
+    return cells;
+}
+
+function getColumnCount(range) {
+    let [start, end] = range.split(':');
+    const startCol = start.match(/[A-Z]+/)[0];
+    const endCol = end.match(/[A-Z]+/)[0];
+    return colToNum(endCol) - colToNum(startCol) + 1;
+}
+
+function colToNum(col) {
+    let num = 0;
+    for (let i = 0; i < col.length; i++) num = num * 26 + (col.charCodeAt(i) - 64);
+    return num - 1;
+}
+function numToCol(num) {
+    let col = "";
+    while (num >= 0) {
+        col = String.fromCharCode(65 + (num % 26)) + col;
+        num = Math.floor(num / 26) - 1;
+    }
+    return col;
+}
+
+// ==========================================
 // 4. CELL HANDLING & UI UPDATES
 // ==========================================
 function updateStatusBar() {
@@ -223,22 +382,21 @@ function updateStatusBar() {
 function getCellValueFromDOM(ref) {
     const match = ref.match(/([A-Z]+)([0-9]+)/);
     if (!match) return null;
-    const colIndex = colToNum(match[1]); const rowIndex = parseInt(match[2]) - 1;
+    const colIndex = colToNum(match[1]);
+    const rowIndex = parseInt(match[2]) - 1;
     const tbody = document.getElementById('tableBody');
     if (tbody && rowIndex >= 0 && rowIndex < tbody.rows.length) {
-        const cell = tbody.rows[rowIndex].cells[colIndex + 1]; 
+        const cell = tbody.rows[rowIndex].cells[colIndex + 1];
         if (cell) return cell.innerText.trim();
     }
     return null;
 }
-
 
 window.updateDropdownUI = function(dropdownId, displayValue) {
     const dropdown = document.getElementById(dropdownId);
     if (!dropdown) return;
     const selectedEl = dropdown.querySelector('.selected-text') || dropdown.querySelector('.dropdown-selected');
     if (selectedEl) {
-        // Find the text node to update so we don't accidentally delete dropdown arrow icons
         let textNode = Array.from(selectedEl.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim().length > 0);
         if (textNode) textNode.nodeValue = displayValue;
         else selectedEl.innerText = displayValue;
@@ -254,20 +412,13 @@ function setActiveCell(cell) {
         const colIdx = activeCell.cellIndex - 1;
         const refEl = document.getElementById('activeCellRef');
         const formulaEl = document.getElementById('formulaInput');
-        
         if (refEl) refEl.innerText = `${numToCol(colIdx)}${rowIdx}`;
-        
-        // Show stored formula or empty
         const storedFormula = cellFormulas.get(activeCell) || '';
         if (formulaEl) {
             formulaEl.value = storedFormula;
             formulaEl.placeholder = storedFormula ? '' : 'Enter formula (e.g., =SUM(A1:A5))';
         }
-        
-        // Update value display
         updateValueDisplayForCell(activeCell);
-        
-        // Formatting toolbar (unchanged)
         const style = window.getComputedStyle(activeCell);
         let currentFont = activeCell.style.fontFamily || style.fontFamily || 'Inter';
         updateDropdownUI('fontDropdown', currentFont.split(',')[0].replace(/['"]/g, '').trim());
@@ -304,8 +455,6 @@ function updateValueDisplayForCell(cell) {
         if (result !== null && !isNaN(result)) {
             valueDisplay.value = result;
         } else {
-            // If evaluation fails (e.g., unsupported function like IF, SQRT),
-            // show the cell's current computed value (already in the DOM).
             valueDisplay.value = cell.innerText.trim() || '(empty)';
         }
     } else {
@@ -313,27 +462,151 @@ function updateValueDisplayForCell(cell) {
     }
 }
 
+// --- Multi-cell selection helpers ---
+function clearSelection() {
+    selectedCells.forEach(cell => {
+        cell.classList.remove('range-selected');
+    });
+    selectedCells = [];
+}
+
+function addToSelection(cell) {
+    if (!selectedCells.includes(cell)) {
+        selectedCells.push(cell);
+        cell.classList.add('range-selected');
+    }
+}
+
+function selectRange(startCell, endCell) {
+    clearSelection();
+    if (!startCell || !endCell) return;
+    
+    const startRow = startCell.parentElement.rowIndex;
+    const startCol = startCell.cellIndex;
+    const endRow = endCell.parentElement.rowIndex;
+    const endCol = endCell.cellIndex;
+    
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    
+    const tbody = document.getElementById('tableBody');
+    for (let r = minRow; r <= maxRow; r++) {
+        const row = tbody.rows[r];
+        if (!row) continue;
+        for (let c = minCol; c <= maxCol; c++) {
+            const cell = row.cells[c];
+            if (cell && cell.classList && cell.classList.contains('editable-cell')) {
+                selectedCells.push(cell);
+                cell.classList.add('range-selected');
+            }
+        }
+    }
+}
+
+// Apply a formatting action to all selected cells (plus active cell)
+function applyFormatToSelection(property, value) {
+    // Combine active cell (if any) with selected cells
+    let cellsToFormat = [...selectedCells];
+    if (activeCell && !cellsToFormat.includes(activeCell)) {
+        cellsToFormat.push(activeCell);
+    }
+    if (cellsToFormat.length === 0) return;
+    
+    for (let cell of cellsToFormat) {
+        if (property === 'fontSize' && !String(value).includes('px')) {
+            cell.style[property] = parseInt(value) + 'px';
+        } else {
+            cell.style[property] = value;
+        }
+    }
+    captureState();
+    // Refresh UI for active cell (update dropdowns)
+    if (activeCell) setActiveCell(activeCell);
+    
+}
+
 function attachCellEvents() {
+    // Prevent mousedown interference on toolbars
     document.querySelectorAll('.tool-btn, .custom-dropdown, .color-swatch').forEach(el => {
         el.addEventListener('mousedown', (e) => {
             if (e.target.tagName !== 'INPUT') e.preventDefault();
         });
     });
-
+    
+    // Drag selection on cells only
     document.querySelectorAll('.editable-cell').forEach(cell => {
-        cell.onfocus = () => setActiveCell(cell);
-        cell.onblur = () => {
-    captureState();
-    if (activeCell === cell) {
-        // If cell was manually edited, remove formula if it became plain text
-        const currentValue = cell.innerText.trim();
-        const storedFormula = cellFormulas.get(cell);
-        if (!currentValue.startsWith('=') && storedFormula) {
-            cellFormulas.delete(cell);
-        }
-        updateValueDisplayForCell(cell);
-    }
-};
+        // Remove existing listeners to avoid duplicates
+        cell.removeEventListener('mousedown', cell._dragStartHandler);
+        cell.removeEventListener('mouseover', cell._dragOverHandler);
+        
+        const dragStartHandler = (e) => {
+            // Focus the cell first so that activeCell is set
+            cell.focus();
+            
+            if (e.ctrlKey) {
+                if (selectedCells.includes(cell)) {
+                    cell.classList.remove('range-selected');
+                    selectedCells = selectedCells.filter(c => c !== cell);
+                } else {
+                    addToSelection(cell);
+                }
+                e.preventDefault();
+                return;
+            }
+            if (e.shiftKey && activeCell) {
+                selectRange(activeCell, cell);
+                e.preventDefault();
+                return;
+            }
+            // Start drag selection
+            isDragging = true;
+            dragStartCell = cell;
+            lastDragCell = cell;
+            clearSelection();
+            addToSelection(cell);
+            e.preventDefault();
+        };
+        
+        const dragOverHandler = () => {
+            if (!isDragging) return;
+            if (cell === lastDragCell) return;
+            lastDragCell = cell;
+            selectRange(dragStartCell, cell);
+        };
+        
+        cell.addEventListener('mousedown', dragStartHandler);
+        cell.addEventListener('mouseover', dragOverHandler);
+        
+        cell._dragStartHandler = dragStartHandler;
+        cell._dragOverHandler = dragOverHandler;
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        dragStartCell = null;
+        lastDragCell = null;
+    });
+    
+    // Cell focus/blur events – these set activeCell and handle editing
+    document.querySelectorAll('.editable-cell').forEach(cell => {
+        // Remove any existing handlers first
+        cell.onfocus = null;
+        cell.onblur = null;
+        
+        cell.addEventListener('focus', () => setActiveCell(cell));
+        cell.addEventListener('blur', () => {
+            captureState();
+            if (activeCell === cell) {
+                const currentValue = cell.innerText.trim();
+                const storedFormula = cellFormulas.get(cell);
+                if (!currentValue.startsWith('=') && storedFormula) {
+                    cellFormulas.delete(cell);
+                }
+                updateValueDisplayForCell(cell);
+            }
+        });
     });
 }
 
@@ -379,10 +652,8 @@ function insertAtCursor(input, text) {
 const formulaInput = document.getElementById('formulaInput');
 if (formulaInput) {
     document.addEventListener('click', (e) => {
-        // If the clicked element is an editable cell AND the formula input has focus
         if (e.target.classList && e.target.classList.contains('editable-cell') && document.activeElement === formulaInput) {
             e.preventDefault();
-            // Get cell reference (e.g., "A1")
             const row = e.target.parentElement.rowIndex;
             const col = e.target.cellIndex - 1;
             const ref = numToCol(col) + row;
@@ -407,8 +678,8 @@ document.querySelectorAll('.func-btn').forEach(btn => {
     });
 });
 
-/// ==========================================
-// 5. FORMATTING TOOLBAR & COLORS
+// ==========================================
+// 5. FORMATTING TOOLBAR & COLORS (updated for multi-cell)
 // ==========================================
 function setupFormattingToolbar() {
     document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
@@ -421,18 +692,20 @@ function setupFormattingToolbar() {
             });
         }
     });
-
     document.addEventListener('click', () => {
         document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('active'));
     });
 
     function applyFormat(property, value) {
-        if (!activeCell) return;
-        
+    if (!activeCell) return;
+    
+    if (selectedCells.length > 0) {
+        applyFormatToSelection(property, value);
+    } else {
+        // Single cell formatting
         if (property === 'fontSize' && !String(value).includes('px')) {
             value = parseInt(value) + 'px';
         }
-
         activeCell.style[property] = value;
         
         if (property === 'fontFamily') {
@@ -442,9 +715,9 @@ function setupFormattingToolbar() {
             if (sizeInput) sizeInput.value = parseInt(value) || 14;
             else updateDropdownUI('sizeDropdown', parseInt(value));
         }
-        
         captureState();
     }
+}
 
     const sizeInput = document.getElementById('customSizeInput');
     if (sizeInput) {
@@ -457,44 +730,34 @@ function setupFormattingToolbar() {
     function setupDropdownItems(dropdownId, styleProperty) {
         const dropdown = document.getElementById(dropdownId);
         if (!dropdown) return;
-
         let trueOriginal = '';
-
         dropdown.addEventListener('mousedown', () => {
             if (activeCell && !dropdown.classList.contains('active')) {
                 trueOriginal = activeCell.style[styleProperty];
             }
         });
-
         dropdown.querySelectorAll('[data-val]').forEach(item => {
-            item.addEventListener('mouseenter', function() { 
+            item.addEventListener('mouseenter', function() {
                 if (activeCell) {
                     let val = this.getAttribute('data-val');
                     if (styleProperty === 'fontSize' && !val.includes('px')) val += 'px';
-                    activeCell.style[styleProperty] = val; 
+                    activeCell.style[styleProperty] = val;
                 }
             });
-            
-            item.addEventListener('mouseleave', function() { 
-                // Revert to what the cell was before the dropdown even opened
-                if (activeCell) activeCell.style[styleProperty] = trueOriginal; 
+            item.addEventListener('mouseleave', function() {
+                if (activeCell) activeCell.style[styleProperty] = trueOriginal;
             });
-            
             item.addEventListener('click', function(e) {
-                e.stopPropagation(); 
+                e.stopPropagation();
                 if (!activeCell) return;
-                
                 let val = this.getAttribute('data-val');
                 if (styleProperty === 'fontSize' && !val.includes('px')) val += 'px';
-                
-                trueOriginal = val; // Lock this as the new baseline so mouseleave doesn't erase it
+                trueOriginal = val;
                 applyFormat(styleProperty, val);
-                
                 dropdown.classList.remove('active');
             });
         });
     }
-    
     setupDropdownItems('fontDropdown', 'fontFamily');
     setupDropdownItems('sizeDropdown', 'fontSize');
 
@@ -503,42 +766,34 @@ function setupFormattingToolbar() {
             e.preventDefault();
             if (!activeCell) return;
             const cmd = this.getAttribute('data-cmd');
-
             if (cmd === 'bold') {
                 const isBold = activeCell.style.fontWeight === 'bold' || activeCell.style.fontWeight === '700';
-                activeCell.style.fontWeight = isBold ? 'normal' : 'bold';
+                applyFormat('fontWeight', isBold ? 'normal' : 'bold');
                 this.classList.toggle('active-format', !isBold);
-            } 
-            else if (cmd === 'italic') {
+            } else if (cmd === 'italic') {
                 const isItalic = activeCell.style.fontStyle === 'italic';
-                activeCell.style.fontStyle = isItalic ? 'normal' : 'italic';
+                applyFormat('fontStyle', isItalic ? 'normal' : 'italic');
                 this.classList.toggle('active-format', !isItalic);
-            } 
-            else if (cmd === 'underline') {
+            } else if (cmd === 'underline') {
                 const currentDeco = activeCell.style.textDecoration;
-                
                 if (currentDeco.includes('underline double')) {
-                    // It's double. Turn it completely off.
-                    activeCell.style.textDecoration = 'none';
+                    applyFormat('textDecoration', 'none');
                     this.classList.remove('active-format');
                     this.style.borderBottom = "none";
                 } else if (currentDeco.includes('underline')) {
-                    // It's single. Upgrade to double!
-                    activeCell.style.textDecoration = 'underline double';
+                    applyFormat('textDecoration', 'underline double');
                     this.classList.add('active-format');
                     this.style.borderBottom = "3px double #1e6f3f";
                 } else {
-                    // It's off. Turn on single.
-                    activeCell.style.textDecoration = 'underline';
+                    applyFormat('textDecoration', 'underline');
                     this.classList.add('active-format');
                     this.style.borderBottom = "3px solid #1e6f3f";
                 }
             }
-            captureState();
         });
     });
 
-    // 5. Colors
+    // Colors
     const excelColors = [
         '#ffffff', '#000000', '#eeece1', '#1f497d', '#4f81bd', '#c0504d',
         '#f2f2f2', '#808080', '#ddd9c3', '#c6d9f1', '#dbe5f1', '#f2dcdb',
@@ -549,44 +804,47 @@ function setupFormattingToolbar() {
 
     window.applyColor = (color, isText) => {
         if (!activeCell) return;
-        activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
+        if (selectedCells.length > 0) {
+            for (let cell of selectedCells) {
+                cell.style[isText ? 'color' : 'backgroundColor'] = color;
+            }
+            captureState();
+        } else {
+            activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
+            captureState();
+        }
         const ind = document.querySelector(`#${isText ? 'textColorDropdown' : 'fillColorDropdown'} .color-indicator`);
         if (ind) ind.style.backgroundColor = color;
-        captureState();
     };
 
     function buildPalette(gridId, isText) {
         const grid = document.getElementById(gridId);
         const dropdown = grid?.closest('.custom-dropdown');
         if (!grid || !dropdown) return;
-        
         let trueOriginalColor = '';
-
         dropdown.addEventListener('mousedown', () => {
             if (activeCell && !dropdown.classList.contains('active')) {
                 trueOriginalColor = activeCell.style[isText ? 'color' : 'backgroundColor'];
             }
         });
-
         excelColors.forEach(color => {
             const swatch = document.createElement('div');
-            swatch.className = 'color-swatch'; swatch.style.backgroundColor = color;
-            
+            swatch.className = 'color-swatch';
+            swatch.style.backgroundColor = color;
             swatch.addEventListener('mouseenter', () => {
-                if(activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
+                if (activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = color;
             });
             swatch.addEventListener('mouseleave', () => {
-                if(activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = trueOriginalColor;
+                if (activeCell) activeCell.style[isText ? 'color' : 'backgroundColor'] = trueOriginalColor;
             });
             swatch.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if(activeCell) {
+                if (activeCell) {
                     trueOriginalColor = color;
                     applyColor(color, isText);
                     dropdown.classList.remove('active');
                 }
             });
-            
             grid.appendChild(swatch);
         });
     }
@@ -598,8 +856,9 @@ function setupFormattingToolbar() {
     if (nFill) nFill.oninput = (e) => applyColor(e.target.value, false);
     if (nText) nText.oninput = (e) => applyColor(e.target.value, true);
 }
+
 // ==========================================
-// 6. ROW/COLUMN OPERATIONS
+// 6. ROW/COLUMN OPERATIONS (unchanged)
 // ==========================================
 function addRow() {
     const tbody = document.getElementById('tableBody');
@@ -662,14 +921,12 @@ function attachKeyboardNavigation() {
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
         if (!activeCell) return;
-
         const row = activeCell.parentElement;
         const tbody = document.getElementById('tableBody');
         const rows = Array.from(tbody.querySelectorAll('tr'));
         const rIdx = rows.indexOf(row);
         const cells = Array.from(row.querySelectorAll('td.editable-cell'));
         const cIdx = cells.indexOf(activeCell);
-
         if (e.key === 'ArrowUp' && rIdx > 0) { e.preventDefault(); rows[rIdx - 1].cells[cIdx + 1].focus(); }
         else if (e.key === 'ArrowDown' && rIdx < rows.length - 1) { e.preventDefault(); rows[rIdx + 1].cells[cIdx + 1].focus(); }
         else if (e.key === 'ArrowLeft' && cIdx > 0) { e.preventDefault(); cells[cIdx - 1].focus(); }
@@ -679,7 +936,7 @@ function attachKeyboardNavigation() {
 }
 
 // ==========================================
-// 8. SAVE WORKBOOK
+// 8. SAVE WORKBOOK (unchanged)
 // ==========================================
 async function saveData() {
     const btn = document.getElementById('saveProcessBtn');
@@ -687,42 +944,34 @@ async function saveData() {
     const oldHtml = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Saving...';
     btn.disabled = true;
-
     try {
         const headers = []; const colIndices = []; const mappings = {};
-        
         document.querySelectorAll('#headerRow th:not(.row-header-cell)').forEach((th, idx) => {
             const isTemp = th.classList.contains('header-template-only');
             const sel = th.querySelector('.mapping-select');
             const mapped = sel && sel.value !== "";
             const labelEl = th.querySelector('.header-label');
             const text = labelEl ? labelEl.innerText.trim() : "";
-            
             if (!isTemp || mapped) {
                 colIndices.push(idx);
-                headers.push(mapped ? sel.value : text);
+                headers.push(text);
                 if (mapped) mappings[text] = sel.value;
             }
         });
-
         const rows = [];
         document.querySelectorAll('#tableBody tr').forEach(tr => {
-            const rowData = []; 
+            const rowData = [];
             const tds = tr.querySelectorAll('td.editable-cell');
-            
             colIndices.forEach(idx => {
                 const c = tds[idx];
-                
                 if (!c) {
                     rowData.push({ value: "" });
                     return;
                 }
-
                 let currentUnderline = null;
                 const decoration = c.style.textDecoration || "";
                 if (decoration.includes("underline double")) currentUnderline = "double";
                 else if (decoration.includes("underline")) currentUnderline = "single";
-
                 rowData.push({
                     value: c.innerText.trim(),
                     bold: c.style.fontWeight === "bold" || c.style.fontWeight === "700",
@@ -736,33 +985,27 @@ async function saveData() {
             });
             rows.push(rowData);
         });
-
-        const payload = { headers, rows, mappings };
-        console.log("🚀 STEP 1 (JS OUT): Sending this payload to Python ->", payload);
-        console.log("🚀 STEP 1a (JS OUT - Check Row 1):", rows[0]);
-
         const res = await fetch(window.DJANGO_VARS.saveUrl, {
-            method: "POST", 
+            method: "POST",
             headers: { "Content-Type": "application/json", "X-CSRFToken": window.DJANGO_VARS.csrfToken },
             body: JSON.stringify({ headers, rows, mappings })
         });
-        
         const data = await res.json();
         if (res.ok) {
             showToast("Saved!", "success");
             setTimeout(() => {
                 const newId = data.new_file_id;
                 window.location.href = window.DJANGO_VARS.uploadUrl + "?preview_id=" + newId + "&_=" + Date.now();
-            }, 800); 
-        } else { 
-            showToast("Error: " + data.error, "error"); 
+            }, 800);
+        } else {
+            showToast("Error: " + data.error, "error");
         }
-    } catch (e) { 
+    } catch (e) {
         console.error("Save failed:", e);
-        showToast("Connection error", "error"); 
-    } finally { 
-        btn.innerHTML = oldHtml; 
-        btn.disabled = false; 
+        showToast("Connection error", "error");
+    } finally {
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
     }
 }
 
@@ -781,11 +1024,8 @@ function init() {
     renumberRows();
     attachKeyboardNavigation();
     setupFormattingToolbar();
-
     const uiBtns = { 'addRowBtn': addRow, 'addColBtn': addColumn, 'undoBtn': undo, 'redoBtn': redo, 'saveProcessBtn': saveData };
     Object.entries(uiBtns).forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.onclick = fn; });
-
-    // --- Restore saved mappings (unchanged) ---
     let saved = window.DJANGO_VARS.savedMappings;
     while (typeof saved === 'string') {
         try { saved = JSON.parse(saved); } catch(e) { break; }
@@ -799,8 +1039,6 @@ function init() {
             }
         });
     }
-
-    // --- Restore styles (unchanged) ---
     let styles = window.DJANGO_VARS.styleData;
     while (typeof styles === 'string') {
         try { styles = JSON.parse(styles); } catch(e) { break; }
@@ -825,8 +1063,6 @@ function init() {
             }
         });
     }
-
-    // ========== NEW: RESTORE FORMULAS ==========
     let formulas = window.DJANGO_VARS.formulasData;
     while (typeof formulas === 'string') {
         try { formulas = JSON.parse(formulas); } catch(e) { break; }
@@ -845,9 +1081,8 @@ function init() {
         });
     }
     if (activeCell) updateValueDisplayForCell(activeCell);
-
     captureState();
-
+    console.log("🔄 Editor initialized with multi‑cell selection and advanced formulas.");
     console.log("🔄 STEP 5 (JS IN): Page loaded. What did Django give us?");
     console.log("Raw DJANGO_VARS.styleData type:", typeof window.DJANGO_VARS.styleData);
     console.log("Raw DJANGO_VARS.styleData value:", window.DJANGO_VARS.styleData);
