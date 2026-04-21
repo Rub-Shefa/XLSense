@@ -340,9 +340,13 @@ Download
         <option value="medium">Medium</option>
         <option value="dark">Dark</option>
     </select>
-    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <a id="previewDownloadBtn" class="primary-btn">
             ⬇ Download Styled Excel
+        </a>
+
+        <a id="backToEditorBtn" class="primary-btn" style="display:none; background:linear-gradient(90deg,#4f81bd,#2e5fa3);">
+            ✏️ Go Back to Workbook Editor
         </a>
 
         <span id="formatStatus" style="font-weight:500; color:var(--color-text-muted);">
@@ -499,18 +503,27 @@ document.addEventListener("click", function(e){
             openPreview(fileId);
         }
 
-        // 2. Trigger download if needed
+        // 2. Show "Go back to workbook editor" button only when coming from Save & Process
+        if (previewId) {
+            const backBtn = document.getElementById('backToEditorBtn');
+            if (backBtn) {
+                backBtn.href = `/editor/${previewId}/`;
+                backBtn.style.display = 'inline-block';
+            }
+        }
+
+        // 3. Trigger download if needed
         if (shouldDownload) {
             const downloadUrl = `/download/${fileId}/`;
             setTimeout(() => { window.location.href = downloadUrl; }, 1000);
         }
 
-        // 3. Clean the URL so it doesn't repeat on refresh
+        // 4. Clean the URL so it doesn't repeat on refresh
         setTimeout(() => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }, 2000);
 
-        // 4. Optional: scroll to preview section
+        // 5. Optional: scroll to preview section
         const previewSection = document.querySelector('.latest-upload-preview');
         if (previewSection) previewSection.scrollIntoView({ behavior: 'smooth' });
     }

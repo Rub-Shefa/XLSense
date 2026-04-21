@@ -142,14 +142,12 @@ function evaluateFormula(formula, getCellValue) {
     if (!formula.startsWith('=')) return null;
     const expr = formula.substring(1).trim();
 
-    // Match function calls: FUNCTION(arguments)
     const funcMatch = expr.match(/^([A-Z_]+)\((.*)\)$/i);
     if (funcMatch) {
         const func = funcMatch[1].toUpperCase();
         const argsString = funcMatch[2];
         const args = parseArguments(argsString);
         
-        // Existing functions
         if (['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN'].includes(func)) {
             let allValues = [];
             for (let arg of args) {
@@ -169,16 +167,13 @@ function evaluateFormula(formula, getCellValue) {
             if (func === 'MIN') return allValues.length ? Math.min(...allValues) : 0;
         }
         
-        // IF(condition, value_if_true, value_if_false)
         if (func === 'IF') {
             if (args.length < 2) return '#ERROR';
             let condition = args[0];
             let trueVal = args[1];
             let falseVal = args.length > 2 ? args[2] : '';
-            // evaluate condition
             let condResult;
             try {
-                // condition may be a comparison like "A1>5"
                 let condExpr = condition.replace(/[A-Z]+[0-9]+/gi, (ref) => {
                     let val = getCellValue(ref);
                     return isNaN(val) ? `"${val}"` : val;
@@ -186,7 +181,6 @@ function evaluateFormula(formula, getCellValue) {
                 condResult = Function('"use strict";return (' + condExpr + ')')();
             } catch(e) { condResult = false; }
             if (condResult) {
-                // evaluate true part
                 if (trueVal.match(/[A-Z]+[0-9]+/)) {
                     let val = getCellValue(trueVal);
                     return val !== null ? val : trueVal;
@@ -201,7 +195,6 @@ function evaluateFormula(formula, getCellValue) {
             }
         }
         
-        // COUNTIF(range, criteria)
         if (func === 'COUNTIF') {
             if (args.length < 2) return '#ERROR';
             let range = args[0];
@@ -229,7 +222,6 @@ function evaluateFormula(formula, getCellValue) {
             return count;
         }
         
-        // COUNTA(range)
         if (func === 'COUNTA') {
             if (args.length < 1) return '#ERROR';
             let range = args[0];
@@ -242,7 +234,6 @@ function evaluateFormula(formula, getCellValue) {
             return count;
         }
         
-        // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found])
         if (func === 'XLOOKUP') {
             if (args.length < 3) return '#ERROR';
             let lookupValue = args[0];
@@ -261,18 +252,16 @@ function evaluateFormula(formula, getCellValue) {
             return ifNotFound;
         }
         
-        // VLOOKUP(lookup_value, table_array, col_index_num, [range_lookup])
         if (func === 'VLOOKUP') {
             if (args.length < 3) return '#ERROR';
             let lookupValue = args[0];
             let tableArray = args[1];
             let colIndex = parseInt(args[2]);
             let rangeLookup = args.length > 3 ? args[3] : 'TRUE';
-            // tableArray is like "A1:C100"
             let tableCells = getCellsInRange(tableArray, getCellValue);
             let rows = tableCells.length / getColumnCount(tableArray);
             for (let i = 0; i < rows; i++) {
-                let cellRef = tableCells[i]; // first column cell
+                let cellRef = tableCells[i];
                 let val = getCellValue(cellRef);
                 if (val == lookupValue) {
                     let targetCellRef = tableCells[i + (colIndex-1)*rows];
@@ -286,7 +275,6 @@ function evaluateFormula(formula, getCellValue) {
         return '#NAME?';
     }
     
-    // Simple arithmetic (e.g., A1+B2)
     try {
         let evalExpr = expr.replace(/[A-Z]+[0-9]+/gi, (ref) => {
             let val = getCellValue(ref);
@@ -425,7 +413,6 @@ function getSmartRange(cell) {
         return val !== "";
     };
 
-    // 1. Check vertical (up and down)
     let topRow = rowIndex - 1;
     let bottomRow = rowIndex + 1;
     let hasUp = false, hasDown = false;
@@ -434,12 +421,9 @@ function getSmartRange(cell) {
     if (hasUp || hasDown) {
         let startRow = topRow + 1;
         let endRow = bottomRow - 1;
-        // If the active cell itself is filled, you could include it by adjusting startRow/endRow.
-        // For now, only filled cells adjacent (excluding active cell if empty).
         return `${numToCol(cellIndex - 1)}${startRow + 1}:${numToCol(cellIndex - 1)}${endRow + 1}`;
     }
 
-    // 2. Check horizontal (left and right)
     let leftCol = cellIndex - 1;
     let rightCol = cellIndex + 1;
     let hasLeft = false, hasRight = false;
@@ -504,7 +488,6 @@ function setActiveCell(cell) {
             formulaEl.value = storedFormula;
             formulaEl.placeholder = storedFormula ? '' : 'Enter formula (e.g., =SUM(A1:A5))';
         }
-        // Update formula hint based on current formula input value
         if (typeof window.showFormulaHint === 'function') {
             window.showFormulaHint(formulaEl ? formulaEl.value : '');
         }
@@ -598,9 +581,7 @@ function selectRange(startCell, endCell) {
     }
 }
 
-// Apply a formatting action to all selected cells (plus active cell)
 function applyFormatToSelection(property, value) {
-    // Combine active cell (if any) with selected cells
     let cellsToFormat = [...selectedCells];
     if (activeCell && !cellsToFormat.includes(activeCell)) {
         cellsToFormat.push(activeCell);
@@ -615,22 +596,18 @@ function applyFormatToSelection(property, value) {
         }
     }
     captureState();
-    // Refresh UI for active cell (update dropdowns)
     if (activeCell) setActiveCell(activeCell);
     
 }
 
 function attachCellEvents() {
-    // Prevent mousedown interference on toolbars
     document.querySelectorAll('.tool-btn, .custom-dropdown, .color-swatch').forEach(el => {
         el.addEventListener('mousedown', (e) => {
             if (e.target.tagName !== 'INPUT') e.preventDefault();
         });
     });
     
-    // Drag selection on cells only
     document.querySelectorAll('.editable-cell').forEach(cell => {
-        // Remove existing listeners to avoid duplicates
         cell.removeEventListener('mousedown', cell._dragStartHandler);
         cell.removeEventListener('mouseover', cell._dragOverHandler);
         
@@ -654,7 +631,6 @@ function attachCellEvents() {
                 e.preventDefault();
                 return;
             }
-            // Start drag selection
             isDragging = true;
             dragStartCell = cell;
             lastDragCell = cell;
@@ -682,9 +658,7 @@ function attachCellEvents() {
         lastDragCell = null;
     });
     
-    // Cell focus/blur events – these set activeCell and handle editing
     document.querySelectorAll('.editable-cell').forEach(cell => {
-        // Remove any existing handlers first
         cell.onfocus = null;
         cell.onblur = null;
         
@@ -694,7 +668,6 @@ function attachCellEvents() {
     if (activeCell === cell) {
         const currentValue = cell.innerText.trim();
         const storedFormula = cellFormulas.get(cell);
-        // Only delete formula if cell is empty AND there was a formula
         if (currentValue === '' && storedFormula) {
             cellFormulas.delete(cell);
         }
@@ -732,7 +705,6 @@ if (fBar) {
     });
 }
 
-// Helper to insert text at cursor position in the formula input
 function insertAtCursor(input, text) {
     const start = input.selectionStart;
     const end = input.selectionEnd;
@@ -742,7 +714,6 @@ function insertAtCursor(input, text) {
     input.focus();
 }
 
-// Listen for clicks on any cell while formula input is focused
 const formulaInput = document.getElementById('formulaInput');
 if (formulaInput) {
     document.addEventListener('click', (e) => {
@@ -775,7 +746,6 @@ document.querySelectorAll('.func-btn').forEach(btn => {
                 window.showFormulaHint(fInput.value);
             }
             updateCellFromFormulaBar();
-            // Re-focus the active cell to keep view stable
             activeCell.focus();
         }
     });
@@ -805,7 +775,6 @@ function setupFormattingToolbar() {
     if (selectedCells.length > 0) {
         applyFormatToSelection(property, value);
     } else {
-        // Single cell formatting
         if (property === 'fontSize' && !String(value).includes('px')) {
             value = parseInt(value) + 'px';
         }
@@ -896,7 +865,6 @@ function setupFormattingToolbar() {
         });
     });
 
-    // Colors
     const excelColors = [
         '#ffffff', '#000000', '#eeece1', '#1f497d', '#4f81bd', '#c0504d',
         '#f2f2f2', '#808080', '#ddd9c3', '#c6d9f1', '#dbe5f1', '#f2dcdb',
@@ -1039,7 +1007,7 @@ function attachKeyboardNavigation() {
 }
 
 // ==========================================
-// 8. SAVE WORKBOOK (unchanged)
+// 8. SAVE WORKBOOK
 // ==========================================
 async function saveData() {
     const btn = document.getElementById('saveProcessBtn');
@@ -1055,7 +1023,13 @@ async function saveData() {
             const mapped = sel && sel.value !== "";
             const labelEl = th.querySelector('.header-label');
             const text = labelEl ? labelEl.innerText.trim() : "";
-            if (!isTemp || mapped) {
+            // Include template-only columns if they have actual data (not just '-' placeholders)
+            const colHasData = Array.from(document.querySelectorAll('#tableBody tr')).some(tr => {
+                const cell = tr.querySelectorAll('td.editable-cell')[idx];
+                const val = cell ? cell.innerText.trim() : '';
+                return val !== '' && val !== '-';
+            });
+            if (!isTemp || mapped || colHasData) {
                 colIndices.push(idx);
                 headers.push(text);
                 if (mapped) mappings[text] = sel.value;
@@ -1194,7 +1168,7 @@ if (formulaDropdown) {
     formulaDropdown.addEventListener('change', function() {
         const selected = this.value;
         if (selected && activeCell) {
-            const smartRange = getSmartRange(activeCell); // make sure getSmartRange exists
+            const smartRange = getSmartRange(activeCell);
             const fInput = document.getElementById('formulaInput');
             if (smartRange) {
                 fInput.value = `=${selected}(${smartRange})`;
@@ -1261,7 +1235,6 @@ if (formulaBtn && formulaPanel) {
                 window.showFormulaHint(fInput.value);
             }
             updateCellFromFormulaBar();
-            // Re-focus the active cell to keep view stable (same as old buttons)
             activeCell.focus();
         }
         formulaPanel.style.display = 'none';

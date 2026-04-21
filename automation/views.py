@@ -70,6 +70,9 @@ def detect_column_types(df):
 
         # Check if column contains date-like patterns (e.g., '/', '-', month names)
         sample_str = sample.astype(str)
+        has_letters = sample_str.str.contains(r"[A-Za-z]", na=False).any()
+        has_digits = sample_str.str.contains(r"\d", na=False).any()
+        has_special = sample_str.str.contains(r"[^\w\s]", na=False).any()
         date_pattern = sample_str.str.contains(r'[/\-]|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december', case=False, na=False)
         has_date_pattern = date_pattern.any()
 
@@ -110,6 +113,12 @@ def detect_column_types(df):
             detected_types[column] = "Date"
         elif numeric_ratio > 0.2:
             detected_types[column] = "Mixed"
+        elif has_digits and (has_letters or has_special):
+            detected_types[column] = "Mixed"
+
+        elif numeric_ratio > 0.2:
+            detected_types[column] = "Mixed"
+
         else:
             detected_types[column] = "Text"
     
@@ -132,7 +141,7 @@ def preprocess_dataframe(df):
     df = df.dropna(how="all")
 
     # remove rows with only 1 value
-    df = df[df.count(axis=1) > 1]
+    df = df[df.count(axis=1) > 0]
 
     df = df.reset_index(drop=True)
 
@@ -615,7 +624,7 @@ def download_excel_view(request, file_id):
     
     # remove empty rows (match preview)
     df = df.dropna(how="all")
-    df = df[df.count(axis=1) > 1]
+    df = df[df.count(axis=1) > 0]
     df = df.reset_index(drop=True)
 
     
@@ -686,6 +695,7 @@ def download_excel_view(request, file_id):
         # Default to black with full opacity
         return "FF000000"
 
+    user_bg_cells = set()
     if style_data:
         for row_idx, row in enumerate(style_data, start=2):  # +2 because of header row (1-indexed, row 1 is header)
             for col_idx, cell in enumerate(row, start=1):
@@ -696,12 +706,36 @@ def download_excel_view(request, file_id):
                     font_color = None
                     if cell.get("color"):
                         font_color = convert_to_argb(cell.get("color"))
-                    
+
+                    # Handle font family (take first in CSS stack, strip quotes)
+                    font_name = None
+                    if cell.get("fontFamily"):
+                        font_name = cell.get("fontFamily").split(",")[0].strip().strip("'\"")
+
+                    # Handle font size (convert px to pt: pt = px * 0.75)
+                    font_size = None
+                    if cell.get("fontSize"):
+                        try:
+                            px_val = float(str(cell.get("fontSize")).replace("px", "").strip())
+                            font_size = round(px_val * 0.75, 1)
+                        except (ValueError, TypeError):
+                            font_size = None
+
+                    underline_val = cell.get("underline")
+                    if underline_val == "double":
+                        underline_style = "double"
+                    elif underline_val == "single":
+                        underline_style = "single"
+                    else:
+                        underline_style = None
+
                     excel_cell.font = Font(
                         bold=cell.get("bold", False),
                         italic=cell.get("italic", False),
-                        underline="single" if cell.get("underline") else None,
-                        color=font_color
+                        underline=underline_style,
+                        color=font_color,
+                        name=font_name,
+                        size=font_size
                     )
 
                     # Handle background color
@@ -712,41 +746,34 @@ def download_excel_view(request, file_id):
                             end_color=bg_color,
                             fill_type="solid"
                         )
-    
-    # table range
+                        user_bg_cells.add((row_idx, col_idx))
+
+    # Apply theme colors manually to match the CSS preview exactly
+    THEME_STYLES = {
+        "light":  {"header_bg": "FFF1F5F9", "header_fg": "FF1A1A2E", "alt_bg": "FFF8FAFC"},
+        "medium": {"header_bg": "FF5B9BD5", "header_fg": "FFFFFFFF", "alt_bg": "FFDEEAF6"},
+        "dark":   {"header_bg": "FF203864", "header_fg": "FFFFFFFF", "alt_bg": "FFD9E1F2"},
+    }
+
+    if style in THEME_STYLES:
+        theme = THEME_STYLES[style]
+        # Apply header row
+        for cell in ws[1]:
+            cell.fill = PatternFill(start_color=theme["header_bg"], end_color=theme["header_bg"], fill_type="solid")
+            cell.font = Font(bold=True, color=theme["header_fg"])
+        # Apply alternating rows — skip cells that have a user-defined background
+        for row_idx in range(2, ws.max_row + 1):
+            if row_idx % 2 == 0:
+                for cell in ws[row_idx]:
+                    if (row_idx, cell.column) not in user_bg_cells:
+                        cell.fill = PatternFill(start_color=theme["alt_bg"], end_color=theme["alt_bg"], fill_type="solid")
+
+    # Add table (keeps filter arrows; no built-in table style since we apply colors manually above)
     from openpyxl.utils import get_column_letter
 
     end_col = get_column_letter(len(df.columns))
     end_row = len(df) + 1
     table = Table(displayName="Table1", ref=f"A1:{end_col}{end_row}")
-
-    # style mapping
-    style_map = {
-        "light": "TableStyleLight9",
-        "medium": "TableStyleMedium9",
-        "dark": "TableStyleDark2"
-    }
-
-    table_style = style_map.get(style)
-
-    style_info = TableStyleInfo(
-        name=table_style,
-        showFirstColumn=False,
-        showLastColumn=False,
-        showRowStripes=True,
-        showColumnStripes=False
-    )
-
-    if table_style:
-        style_info = TableStyleInfo(
-            name=table_style,
-            showFirstColumn=False,
-            showLastColumn=False,
-            showRowStripes=True,
-            showColumnStripes=False
-        )
-        table.tableStyleInfo = style_info
-
     ws.add_table(table)
     # make header bold
     
@@ -799,7 +826,7 @@ def preview_excel_view(request, file_id):
     df.columns = [str(col).replace("_", " ").title() for col in df.columns]
 
     # auto width simulation (important)
-    df = df.astype(str)
+    df = df.fillna("")
 
     # Inside preview_excel_view
     style_data = getattr(uploaded_file, "style_data", None)
@@ -852,12 +879,21 @@ def preview_excel_view(request, file_id):
                         styles.append("font-weight:bold")
                     if cell.get("italic"):
                         styles.append("font-style:italic")
-                    if cell.get("underline"):
-                        styles.append("text-decoration:underline")
+                    underline_val = cell.get("underline")
+                    if underline_val:
+                        if underline_val == "double":
+                            styles.append("text-decoration:underline double")
+                        else:
+                            styles.append("text-decoration:underline")
+                        
                     if cell.get("color"):
                         styles.append(f"color:{cell.get('color')}")
                     if cell.get("bg"):
                         styles.append(f"background:{cell.get('bg')}")
+                    if cell.get("fontFamily"):
+                        styles.append(f"font-family:{cell.get('fontFamily')}")
+                    if cell.get("fontSize"):
+                        styles.append(f"font-size:{cell.get('fontSize')}")
 
                     style_attr = f' style="{";".join(styles)}"'
 
@@ -889,6 +925,3 @@ def workbook_list_view(request):
         "original_files": original_files,
         "edited_files": edited_files,
     })
-
-
-
