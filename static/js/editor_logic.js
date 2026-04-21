@@ -369,6 +369,92 @@ function numToCol(num) {
     return col;
 }
 
+// ===== FORMULA TEMPLATES FOR HINTS =====
+const formulaTemplates = {
+    "SUM": { syntax: "=SUM(range)", ex: "Example: =SUM(A1:A10)" },
+    "AVERAGE": { syntax: "=AVERAGE(range)", ex: "Example: =AVERAGE(B1:B20)" },
+    "COUNT": { syntax: "=COUNT(range)", ex: "Example: =COUNT(C1:C15)" },
+    "COUNTA": { syntax: "=COUNTA(range)", ex: "Example: =COUNTA(B1:B4)" },
+    "MAX": { syntax: "=MAX(range)", ex: "Example: =MAX(E1:E50)" },
+    "MIN": { syntax: "=MIN(range)", ex: "Example: =MIN(F1:F50)" },
+    "IF": { syntax: "=IF(cond, true, false)", ex: 'Example: =IF(A1>50, "Pass", "Fail")' },
+    "COUNTIF": { syntax: '=COUNTIF(range, "crit")', ex: 'Example: =COUNTIF(A1:A30, ">90")' },
+    "VLOOKUP": { syntax: "=VLOOKUP(val, table, col)", ex: 'Example: =VLOOKUP("Apple", A1:C10, 2)' },
+    "XLOOKUP": { syntax: "=XLOOKUP(val, search, return)", ex: "Example: =XLOOKUP(D1, A1:A10, B1:B10)" }
+};
+
+// ===== SHOW FORMULA HINT =====
+window.showFormulaHint = function(typedText) {
+    const hintBox = document.getElementById("formulaHint");
+    if (!hintBox) return;
+    
+    if (!typedText || !typedText.startsWith("=")) {
+        hintBox.style.display = "none";
+        hintBox.innerHTML = "";
+        return;
+    }
+    
+    let upperText = typedText.toUpperCase().trim();
+    let foundKey = null;
+    for (let key in formulaTemplates) {
+        if (upperText.startsWith("=" + key)) {
+            foundKey = key;
+            break;
+        }
+    }
+    
+    if (foundKey) {
+        const template = formulaTemplates[foundKey];
+        hintBox.innerHTML = `<span style="color: #2c7be5;">${template.syntax}</span> | <span style="color: #6c757d; font-style: italic;">${template.ex}</span>`;
+        hintBox.style.display = "block";
+    } else {
+        hintBox.style.display = "none";
+        hintBox.innerHTML = "";
+    }
+};
+
+function getSmartRange(cell) {
+    const table = document.getElementById('tableBody');
+    const rows = Array.from(table.rows);
+    const cellIndex = cell.cellIndex;
+    const rowIndex = cell.parentElement.rowIndex - 1;
+
+    const hasValue = (r, c) => {
+        if (!rows[r] || !rows[r].cells[c]) return false;
+        let val = rows[r].cells[c].innerText.trim();
+        return val !== "";
+    };
+
+    // 1. Check vertical (up and down)
+    let topRow = rowIndex - 1;
+    let bottomRow = rowIndex + 1;
+    let hasUp = false, hasDown = false;
+    while (topRow >= 0 && hasValue(topRow, cellIndex)) { hasUp = true; topRow--; }
+    while (bottomRow < rows.length && hasValue(bottomRow, cellIndex)) { hasDown = true; bottomRow++; }
+    if (hasUp || hasDown) {
+        let startRow = topRow + 1;
+        let endRow = bottomRow - 1;
+        // If the active cell itself is filled, you could include it by adjusting startRow/endRow.
+        // For now, only filled cells adjacent (excluding active cell if empty).
+        return `${numToCol(cellIndex - 1)}${startRow + 1}:${numToCol(cellIndex - 1)}${endRow + 1}`;
+    }
+
+    // 2. Check horizontal (left and right)
+    let leftCol = cellIndex - 1;
+    let rightCol = cellIndex + 1;
+    let hasLeft = false, hasRight = false;
+    const maxCol = rows[0] ? rows[0].cells.length - 1 : cellIndex;
+    while (leftCol >= 1 && hasValue(rowIndex, leftCol)) { hasLeft = true; leftCol--; }
+    while (rightCol <= maxCol && hasValue(rowIndex, rightCol)) { hasRight = true; rightCol++; }
+    if (hasLeft || hasRight) {
+        let startCol = leftCol + 1;
+        let endCol = rightCol - 1;
+        return `${numToCol(startCol - 1)}${rowIndex + 1}:${numToCol(endCol - 1)}${rowIndex + 1}`;
+    }
+
+    return "";
+}
+
 // ==========================================
 // 4. CELL HANDLING & UI UPDATES
 // ==========================================
@@ -418,6 +504,10 @@ function setActiveCell(cell) {
             formulaEl.value = storedFormula;
             formulaEl.placeholder = storedFormula ? '' : 'Enter formula (e.g., =SUM(A1:A5))';
         }
+        // Update formula hint based on current formula input value
+        if (typeof window.showFormulaHint === 'function') {
+            window.showFormulaHint(formulaEl ? formulaEl.value : '');
+        }
         updateValueDisplayForCell(activeCell);
         const style = window.getComputedStyle(activeCell);
         let currentFont = activeCell.style.fontFamily || style.fontFamily || 'Inter';
@@ -444,6 +534,9 @@ function setActiveCell(cell) {
         if (refEl) refEl.innerText = '';
         if (formulaEl) formulaEl.value = '';
         if (valueDisplay) valueDisplay.value = '';
+        if (typeof window.showFormulaHint === 'function') {
+        window.showFormulaHint('');
+    }
     }
 }
 
@@ -542,7 +635,8 @@ function attachCellEvents() {
         cell.removeEventListener('mouseover', cell._dragOverHandler);
         
         const dragStartHandler = (e) => {
-            // Focus the cell first so that activeCell is set
+             if (!e.ctrlKey && !e.shiftKey) {
+          }
             cell.focus();
             
             if (e.ctrlKey) {
@@ -566,7 +660,6 @@ function attachCellEvents() {
             lastDragCell = cell;
             clearSelection();
             addToSelection(cell);
-            e.preventDefault();
         };
         
         const dragOverHandler = () => {
@@ -597,16 +690,17 @@ function attachCellEvents() {
         
         cell.addEventListener('focus', () => setActiveCell(cell));
         cell.addEventListener('blur', () => {
-            captureState();
-            if (activeCell === cell) {
-                const currentValue = cell.innerText.trim();
-                const storedFormula = cellFormulas.get(cell);
-                if (!currentValue.startsWith('=') && storedFormula) {
-                    cellFormulas.delete(cell);
-                }
-                updateValueDisplayForCell(cell);
-            }
-        });
+    captureState();
+    if (activeCell === cell) {
+        const currentValue = cell.innerText.trim();
+        const storedFormula = cellFormulas.get(cell);
+        // Only delete formula if cell is empty AND there was a formula
+        if (currentValue === '' && storedFormula) {
+            cellFormulas.delete(cell);
+        }
+        updateValueDisplayForCell(cell);
+    }
+});
     });
 }
 
@@ -664,16 +758,25 @@ if (formulaInput) {
 
 // Function Buttons (SUM, MIN, etc)
 document.querySelectorAll('.func-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (!activeCell) return;
         const func = btn.getAttribute('data-func');
-        const rowIdx = activeCell.parentElement.rowIndex;
-        const colIdx = numToCol(activeCell.cellIndex - 1);
-        const formula = `=${func.toUpperCase()}(${colIdx}1:${colIdx}${rowIdx > 1 ? rowIdx - 1 : 1})`;
+        const smartRange = getSmartRange(activeCell);
         const fInput = document.getElementById('formulaInput');
         if (fInput) {
-            fInput.value = formula;
+            if (smartRange) {
+                fInput.value = `=${func.toUpperCase()}(${smartRange})`;
+            } else {
+                fInput.value = `=${func.toUpperCase()}(`;
+            }
+            if (typeof window.showFormulaHint === 'function') {
+                window.showFormulaHint(fInput.value);
+            }
             updateCellFromFormulaBar();
+            // Re-focus the active cell to keep view stable
+            activeCell.focus();
         }
     });
 });
@@ -1064,23 +1167,47 @@ function init() {
         });
     }
     let formulas = window.DJANGO_VARS.formulasData;
-    while (typeof formulas === 'string') {
-        try { formulas = JSON.parse(formulas); } catch(e) { break; }
-    }
-    if (formulas && Array.isArray(formulas)) {
-        const trs = document.querySelectorAll('#tableBody tr');
-        formulas.forEach((row, ri) => {
-            if (trs[ri]) {
-                const tds = trs[ri].querySelectorAll('td.editable-cell');
-                row.forEach((formula, ci) => {
-                    if (formula && tds[ci] && typeof formula === 'string' && formula.startsWith('=')) {
-                        cellFormulas.set(tds[ci], formula);
-                    }
-                });
-            }
-        });
-    }
+while (typeof formulas === 'string') {
+    try { formulas = JSON.parse(formulas); } catch(e) { break; }
+}
+if (formulas && Array.isArray(formulas)) {
+    const trs = document.querySelectorAll('#tableBody tr');
+    formulas.forEach((row, ri) => {
+        if (trs[ri]) {
+            const tds = trs[ri].querySelectorAll('td.editable-cell');
+            row.forEach((formula, ci) => {
+                if (formula && tds[ci] && typeof formula === 'string' && formula.startsWith('=')) {
+                    cellFormulas.set(tds[ci], formula);
+                }
+            });
+        }
+    });
+}
     if (activeCell) updateValueDisplayForCell(activeCell);
+    const formulaInput = document.getElementById('formulaInput');
+if (formulaInput) {
+    formulaInput.addEventListener('input', (e) => window.showFormulaHint(e.target.value));
+}
+
+    const formulaDropdown = document.getElementById('formulaDropdown');
+if (formulaDropdown) {
+    formulaDropdown.addEventListener('change', function() {
+        const selected = this.value;
+        if (selected && activeCell) {
+            const smartRange = getSmartRange(activeCell); // make sure getSmartRange exists
+            const fInput = document.getElementById('formulaInput');
+            if (smartRange) {
+                fInput.value = `=${selected}(${smartRange})`;
+            } else {
+                fInput.value = `=${selected}(`;
+            }
+            showFormulaHint(fInput.value);
+            fInput.focus();
+            updateCellFromFormulaBar();
+            this.selectedIndex = 0;
+        }
+    });
+}
     captureState();
     console.log("🔄 Editor initialized with multi‑cell selection and advanced formulas.");
     console.log("🔄 STEP 5 (JS IN): Page loaded. What did Django give us?");
