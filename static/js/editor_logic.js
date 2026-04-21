@@ -1208,6 +1208,66 @@ if (formulaDropdown) {
         }
     });
 }
+// Floating formula panel
+const formulaBtn = document.getElementById('formulaPopupBtn');
+const formulaPanel = document.getElementById('formulaPanel');
+
+if (formulaBtn && formulaPanel) {
+    formulaBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rect = formulaBtn.getBoundingClientRect();
+        let top = rect.bottom + window.scrollY + 5;
+        let left = rect.left + window.scrollX;
+        const panelWidth = formulaPanel.offsetWidth;
+        const panelHeight = formulaPanel.offsetHeight;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        if (left + panelWidth > viewportWidth + window.scrollX) {
+            left = viewportWidth + window.scrollX - panelWidth - 10;
+        }
+        if (left < window.scrollX) {
+            left = window.scrollX + 10;
+        }
+        if (top + panelHeight > window.scrollY + viewportHeight) {
+            top = rect.top + window.scrollY - panelHeight - 5;
+        }
+        formulaPanel.style.top = top + 'px';
+        formulaPanel.style.left = left + 'px';
+        formulaPanel.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!formulaPanel.contains(e.target) && e.target !== formulaBtn) {
+            formulaPanel.style.display = 'none';
+        }
+    });
+
+    document.querySelectorAll('.panel-formula-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!activeCell) return;
+        const func = btn.getAttribute('data-func');
+        const smartRange = getSmartRange(activeCell);
+        const fInput = document.getElementById('formulaInput');
+        if (fInput) {
+            if (smartRange) {
+                fInput.value = `=${func.toUpperCase()}(${smartRange})`;
+            } else {
+                fInput.value = `=${func.toUpperCase()}(`;
+            }
+            if (typeof window.showFormulaHint === 'function') {
+                window.showFormulaHint(fInput.value);
+            }
+            updateCellFromFormulaBar();
+            // Re-focus the active cell to keep view stable (same as old buttons)
+            activeCell.focus();
+        }
+        formulaPanel.style.display = 'none';
+    });
+});
+}
     captureState();
     console.log("🔄 Editor initialized with multi‑cell selection and advanced formulas.");
     console.log("🔄 STEP 5 (JS IN): Page loaded. What did Django give us?");
