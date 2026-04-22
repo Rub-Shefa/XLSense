@@ -383,8 +383,10 @@ window.showFormulaHint = function(typedText) {
     }
     
     let upperText = typedText.toUpperCase().trim();
+    // Sort keys by length descending so "COUNTA" matches before "COUNT"
     let foundKey = null;
-    for (let key in formulaTemplates) {
+    const sortedKeys = Object.keys(formulaTemplates).sort((a,b) => b.length - a.length);
+    for (let key of sortedKeys) {
         if (upperText.startsWith("=" + key)) {
             foundKey = key;
             break;
@@ -413,27 +415,47 @@ function getSmartRange(cell) {
         return val !== "";
     };
 
+    // Vertical: cells above and below (excluding active cell)
     let topRow = rowIndex - 1;
+    let hasAbove = false;
+    while (topRow >= 0 && hasValue(topRow, cellIndex)) {
+        hasAbove = true;
+        topRow--;
+    }
     let bottomRow = rowIndex + 1;
-    let hasUp = false, hasDown = false;
-    while (topRow >= 0 && hasValue(topRow, cellIndex)) { hasUp = true; topRow--; }
-    while (bottomRow < rows.length && hasValue(bottomRow, cellIndex)) { hasDown = true; bottomRow++; }
-    if (hasUp || hasDown) {
-        let startRow = topRow + 1;
-        let endRow = bottomRow - 1;
-        return `${numToCol(cellIndex - 1)}${startRow + 1}:${numToCol(cellIndex - 1)}${endRow + 1}`;
+    let hasBelow = false;
+    while (bottomRow < rows.length && hasValue(bottomRow, cellIndex)) {
+        hasBelow = true;
+        bottomRow++;
+    }
+    if (hasAbove || hasBelow) {
+        let startRow = hasAbove ? topRow + 1 : rowIndex + 1;
+        let endRow = hasBelow ? bottomRow - 1 : rowIndex - 1;
+        if (startRow <= endRow) {
+            return `${numToCol(cellIndex - 1)}${startRow + 1}:${numToCol(cellIndex - 1)}${endRow + 1}`;
+        }
     }
 
+    // Horizontal: cells left and right (excluding active cell)
     let leftCol = cellIndex - 1;
+    let hasLeft = false;
+    while (leftCol >= 1 && hasValue(rowIndex, leftCol)) {
+        hasLeft = true;
+        leftCol--;
+    }
     let rightCol = cellIndex + 1;
-    let hasLeft = false, hasRight = false;
+    let hasRight = false;
     const maxCol = rows[0] ? rows[0].cells.length - 1 : cellIndex;
-    while (leftCol >= 1 && hasValue(rowIndex, leftCol)) { hasLeft = true; leftCol--; }
-    while (rightCol <= maxCol && hasValue(rowIndex, rightCol)) { hasRight = true; rightCol++; }
+    while (rightCol <= maxCol && hasValue(rowIndex, rightCol)) {
+        hasRight = true;
+        rightCol++;
+    }
     if (hasLeft || hasRight) {
-        let startCol = leftCol + 1;
-        let endCol = rightCol - 1;
-        return `${numToCol(startCol - 1)}${rowIndex + 1}:${numToCol(endCol - 1)}${rowIndex + 1}`;
+        let startCol = hasLeft ? leftCol + 1 : cellIndex + 1;
+        let endCol = hasRight ? rightCol - 1 : cellIndex - 1;
+        if (startCol <= endCol) {
+            return `${numToCol(startCol - 1)}${rowIndex + 1}:${numToCol(endCol - 1)}${rowIndex + 1}`;
+        }
     }
 
     return "";

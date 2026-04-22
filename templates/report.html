@@ -28,95 +28,94 @@
     </div>
 
     {% if results %}
-        <div class="summary-card has-errors">
-            <div class="summary-content">
-                <span class="icon-sm">⚠️</span>
-                <div class="summary-text">
-                    <h3>Issues Detected</h3>
-                    <p>Found <strong>{{ results|length }}</strong> validation errors that require attention.</p>
-                </div>
+    <div class="summary-card has-errors">
+        <div class="summary-content">
+            <span class="icon-sm">⚠️</span>
+            <div class="summary-text">
+                <h3>Issues Detected</h3>
+                <p>Found <strong>{{ results|length }}</strong> validation errors that require attention.</p>
             </div>
         </div>
+    </div>
 
-        <div class="table-wrapper">
-            <table class="styled-table">
-                <thead>
-                    <tr>
-                        <th class="col-row">Row</th>
-                        <th class="col-field">Field/Column</th>
-                        <th class="col-desc">Error Description</th>
-                        <th class="col-status">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for result in results %}
-                    <tr class="error-row">
-                        <td class="col-row text-center font-bold row-index-cell">{{ result.row_index }}</td>
-                        <td class="col-field font-medium">{{ result.column_name }}</td>
-                        <td class="col-desc text-error">{{ result.error_details }}</td>
-                        <td class="col-status text-center">
-                            <span class="badge badge-error">Failed</span>
-                            <button class="ai-explain-btn" data-result-id="{{ result.id }}" data-row="{{ result.row_index }}" data-column="{{ result.column_name }}" title="Get AI explanation">AI Explain</button>
-                        </td>
-                    </tr>
-                    <tr class="ai-explanation-row" id="ai-row-{{ result.id }}" style="display: none;">
-                        <td colspan="4">
-                            <div class="ai-explanation-box">
-                                <div class="ai-loading" id="ai-loading-{{ result.id }}">
-                                    <span class="spinner"></span> Generating explanation...
-                                </div>
-                                <div class="ai-content" id="ai-content-{{ result.id }}" style="display: none;"></div>
+    <div class="table-wrapper">
+        <table class="styled-table">
+            <thead>
+                <tr>
+                    <th class="col-row">Row</th>
+                    <th class="col-field">Field/Column</th>
+                    <th class="col-desc">Error Description</th>
+                    <th class="col-status">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results %}
+                <tr class="error-row">
+                    <td class="col-row text-center font-bold row-index-cell">{{ result.row_index }}</td>
+                    <td class="col-field font-medium">{{ result.column_name }}</td>
+                    <td class="col-desc text-error">{{ result.error_details }}</td>
+                    <td class="col-status text-center">
+                        <span class="badge badge-error">Failed</span>
+                        <button class="ai-explain-btn" data-result-id="{{ result.id }}" data-row="{{ result.row_index }}" data-column="{{ result.column_name }}" title="Get AI explanation">AI Explain</button>
+                    </td>
+                </tr>
+                <tr class="ai-explanation-row" id="ai-row-{{ result.id }}" style="display: none;">
+                    <td colspan="4">
+                        <div class="ai-explanation-box">
+                            <div class="ai-loading" id="ai-loading-{{ result.id }}">
+                                <span class="spinner"></span> Generating explanation...
                             </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="recommendations-wrapper">
-            <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
-            
-            {% if recommendations %}
-                <div class="recommendation-grid">
-                    {% for rec in recommendations %}
-                    <div class="rec-card">
-                        <div class="rec-header">
-                            <h4>Missing Column: <span>{{ rec.column }}</span></h4>
+                            <div class="ai-content" id="ai-content-{{ result.id }}" style="display: none;"></div>
                         </div>
-                        <div class="rec-body">
-                            <p>{{ rec.message }}</p>
-                            <div class="formula-box">
-                                <strong>Formula:</strong> <code>{{ rec.formula }}</code>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="no-rec-card">
-                    <div class="no-rec-content">
-                        <span class="check-icon">✓</span>
-                        <p><strong>Structure Verified:</strong> All expected columns and formulas are present in your file.</p>
-                    </div>
-                </div>
-            {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="clean-state-card">
+        <div class="success-visual">
+            <div class="blob-bg"></div>
+            <img src="https://cdn-icons-png.flaticon.com/512/4436/4436481.png" alt="Success">
         </div>
+        <h2>Data is Clean!</h2>
+        <p>No errors found in <strong>{{ uploaded_file.short_name }}</strong>. Ready for processing.</p>
+        <div class="success-actions">
+            <a href="{% url 'upload_history' %}" class="btn-primary-gradient">Return to History</a>
+        </div>
+    </div>
+{% endif %}
 
+<div class="recommendations-wrapper">
+    <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
+    
+    {% if recommendations %}
+        <div class="recommendation-grid">
+            {% for rec in recommendations %}
+            <div class="rec-card">
+                <div class="rec-header">
+                    <h4>Missing Column: <span>{{ rec.column }}</span></h4>
+                </div>
+                <div class="rec-body">
+                    <p>{{ rec.message }}</p>
+                    <div class="formula-box">
+                        <strong>Formula:</strong> <code>{{ rec.formula }}</code>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     {% else %}
-        <div class="clean-state-card">
-            <div class="success-visual">
-                <div class="blob-bg"></div>
-                <img src="https://cdn-icons-png.flaticon.com/512/4436/4436481.png" alt="Success">
-            </div>
-            <h2>Data is Clean!</h2>
-            <p>No errors found in <strong>{{ uploaded_file.short_name }}</strong>. Ready for processing.</p>
-            <div class="success-actions">
-                <a href="{% url 'upload_history' %}" class="btn-primary-gradient">Return to History</a>
+        <div class="no-rec-card">
+            <div class="no-rec-content">
+                <span class="check-icon">✓</span>
+                <p><strong>Structure Verified:</strong> All expected columns and formulas are present in your file.</p>
             </div>
         </div>
     {% endif %}
 </div>
+
 
 <style>
     :root {

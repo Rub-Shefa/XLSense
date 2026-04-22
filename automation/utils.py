@@ -102,33 +102,17 @@ def validate_excel_data(uploaded_file_obj):
     rules = ValidationRule.objects.filter(template=template)
     formula_rules = FormulaRule.objects.filter(template=template)
 
-    # Collect all distinct column names needed from both validation and formula rules
-    needed_columns = set()
-    for rule in rules:
-        needed_columns.add(rule.column_name)
-    for f_rule in formula_rules:
-        needed_columns.add(f_rule.target_column)
-    db_columns = list(needed_columns)
-
-    # Use AI to get a mapping from file columns to database columns (only if columns exist)
-    file_columns = list(df.columns)
-    ai_mapping = {}
-    if file_columns and db_columns:
-        ai_mapping = ai_match_columns(file_columns, db_columns)  # dict {file_col: db_col}
-    
-    # Build reverse mapping: db_column -> actual file column (from AI)
-    reverse_map = {}
-    for file_col, db_col in ai_mapping.items():
-        reverse_map[db_col] = file_col
+    print(f"Validating file: {uploaded_file_obj.file.name}")
+    print(f"DataFrame columns: {list(df.columns)}")
+    print(f"Number of validation rules: {rules.count()}")
+    print(f"Number of formula rules: {formula_rules.count()}")
 
     for index, row in df.iterrows():
-        # --- PART A: LOGIC VALIDATION ---
+        # --- LOGIC VALIDATION ---
         for rule in rules:
-            # Try AI mapping first, then fallback to fuzzy matching
-            actual_col = reverse_map.get(rule.column_name)
-            if not actual_col:
-                actual_col = find_best_column(rule.column_name, df.columns)
+            actual_col = find_best_column(rule.column_name, df.columns)
             if actual_col:
+                print(f"Rule '{rule.rule_name}' matched to column '{actual_col}'")
                 raw_val = row[actual_col]
 
                 if pd.isna(raw_val) or raw_val == "":
@@ -154,9 +138,7 @@ def validate_excel_data(uploaded_file_obj):
                         "round": round,
                     }
 
-                    if not eval(
-                        rule.condition_expression, allowed_globals, allowed_locals
-                    ):
+                    if not eval(rule.condition_expression, allowed_globals, allowed_locals):
                         ValidationResult.objects.create(
                             file=uploaded_file_obj,
                             row_index=index + 1,
@@ -164,19 +146,21 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=rule.error_message,
                             is_valid=False,
                         )
-                except Exception:
+                        print(f"  -> Validation failed for row {index+1}, column {actual_col}")
+                except Exception as e:
+                    print(f"  -> Error evaluating rule: {e}")
                     continue
+            else:
+                print(f"Rule '{rule.rule_name}' could not match any column")
 
-        # --- PART B: FORMULA AUDIT ---
+        # --- FORMULA AUDIT ---
         row_context = {
             str(k).replace(" ", ""): (0 if pd.isna(v) or v == "" else v)
             for k, v in row.items()
         }
 
         for f_rule in formula_rules:
-            actual_target_col = reverse_map.get(f_rule.target_column)
-            if not actual_target_col:
-                actual_target_col = find_best_column(f_rule.target_column, df.columns)
+            actual_target_col = find_best_column(f_rule.target_column, df.columns)
             if actual_target_col:
                 try:
                     excel_val = row[actual_target_col]
@@ -191,33 +175,62 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=f"Math Error: Expected {expected_val}, found {excel_val}.",
                             is_valid=False,
                         )
-                except NameError:
-                    continue
-                except Exception:
+                        print(f"  -> Formula mismatch for row {index+1}, column {actual_target_col}")
+                except Exception as e:
+                    print(f"  -> Error in formula audit: {e}")
                     continue
 
+    error_count = ValidationResult.objects.filter(file=uploaded_file_obj, is_valid=False).count()
+    print(f"Total validation errors for this file: {error_count}")
     return True
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
-    # FIX: Added local import
-    from .models import FormulaRule
+    from .models import FormulaRule, ValidationRule
 
     template = uploaded_file_obj.template
-    all_formula_rules = FormulaRule.objects.filter(template=template)
+    validation_cols = set(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
+    formula_cols = set(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
+    all_domain_cols = validation_cols.union(formula_cols)
+
+    print("\n--- DEBUG: get_formula_recommendations ---")
+    print("Domain columns:", all_domain_cols)
+    print("File columns:", list(df_columns))
+
+    file_columns = list(df_columns)
+    ai_mapping = {}
+    if file_columns and all_domain_cols:
+        ai_mapping = ai_match_columns(file_columns, list(all_domain_cols))
+    print("AI mapping (file_col -> db_col):", ai_mapping)
+    reverse_map = {}
+    for file_col, db_col in ai_mapping.items():
+        reverse_map[db_col] = file_col
+    print("Reverse map (db_col -> file_col):", reverse_map)
 
     recommendations = []
-    for rule in all_formula_rules:
-        actual_col = find_best_column(rule.target_column, df_columns)
-        if not actual_col:
-            recommendations.append(
-                {
-                    "column": rule.target_column,
-                    "formula": rule.condition_expression,
-                    "message": f"Suggested: Create '{rule.target_column}'. Use the formula below to calculate it.",
-                }
-            )
+    for domain_col in all_domain_cols:
+        if domain_col in reverse_map:
+            print(f"  -> '{domain_col}' matched via AI to '{reverse_map[domain_col]}' -> skipping")
+            continue
+        actual_col = find_best_column(domain_col, df_columns)
+        if actual_col:
+            print(f"  -> '{domain_col}' matched via fuzzy to '{actual_col}' -> skipping")
+            continue
+        print(f"  -> '{domain_col}' is missing -> adding recommendation")
+        formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
+        if formula_rule:
+            formula = formula_rule.condition_expression
+            message = f"Suggested: Create '{domain_col}' column. Use the formula below to calculate it."
+        else:
+            formula = ""
+            message = f"Suggested: Create '{domain_col}' column (required for validation)."
+        recommendations.append({
+            "column": domain_col,
+            "formula": formula,
+            "message": message,
+        })
+    print("Recommendations generated:", recommendations)
+    print("----------------------------------------\n")
     return recommendations
-
 
 def calculate_quality_score(uploaded_file_obj, total_rows):
     # FIX: Added local import

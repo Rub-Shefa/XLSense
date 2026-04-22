@@ -16,7 +16,7 @@ from django.core.files.base import ContentFile
 
 # Import your models and utils
 from .models import UploadedFile, ValidationRule, FormulaRule
-from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns
+from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, validate_excel_data
 
 @login_required
 def workbook_editor_view(request, file_id):
@@ -29,7 +29,6 @@ def workbook_editor_view(request, file_id):
     form_cols = list(FormulaRule.objects.filter(template=template).values_list("target_column", flat=True))
     db_columns = list(set(val_cols + form_cols))
 
-    # Helper functions (normalize, find_matching_db_column, etc.) – same as before
     def normalize(col):
         col = str(col).lower()
         col = re.sub(r"[ _()%\.\-/]", "", col)
@@ -118,11 +117,12 @@ def workbook_editor_view(request, file_id):
 
         user_columns_original = list(df.columns)
 
-        # Column mapping (AI + fallback) – unchanged
         columns_with_classes = []
         ai_matches = {}
         if not saved_mappings:
-            ai_matches = ai_match_columns(user_columns_original, db_columns)
+          ai_matches = ai_match_columns(user_columns_original, db_columns)
+
+        # Process user columns
         for col in user_columns_original:
             matched_db = None
             if saved_mappings and col in saved_mappings:
@@ -141,9 +141,9 @@ def workbook_editor_view(request, file_id):
             matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
             for db_col in db_columns:
                 if db_col not in matched_cols and db_col not in df.columns:
-                    df[db_col] = "-"
+                    df[db_col] = ""
                     formulas_df[db_col] = None
-                    columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": None})
+                    columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": db_col})
 
         current_columns = [c["name"] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
@@ -189,7 +189,7 @@ def save_workbook_data(request, file_id):
             print("\n" + "="*50)
             print("📥 STEP 2 (PYTHON IN): Received data from JS!")
             if data.get("rows"):
-                print(f"Sample Row 0 Style Data: {data.get('rows')[0][0]}") # Check first cell of first row
+                print(f"Sample Row 0 Style Data: {data.get('rows')[0][0]}") 
             else:
                 print("⚠️ WARNING: 'rows' key is missing or empty in JS payload!")
             
@@ -232,6 +232,8 @@ def save_workbook_data(request, file_id):
                     aligned_style_data.append(row)
 
             df = pd.DataFrame(clean_rows, columns=headers)
+            df = df.fillna('')
+            df = df.replace(['nan', 'None', '<NA>'], '', regex=False)
             print(f"🔧 aligned_style_data length: {len(aligned_style_data)}")
             if aligned_style_data:
                 print(f"First aligned row first cell: {aligned_style_data[0][0] if aligned_style_data[0] else 'empty'}")
@@ -241,7 +243,9 @@ def save_workbook_data(request, file_id):
             
             df = preprocess_dataframe(df)
             df = remove_empty_unnamed_columns(df)
-            
+            df = df.fillna('')
+            df = df.replace(['nan', 'None', '<NA>', '-'], '', regex=False)
+
             # 4. Generate new filename
             original_name = os.path.basename(original_file.file.name)
             name_part = original_name.replace(".csv", "").replace(".xlsx", "")
@@ -275,6 +279,12 @@ def save_workbook_data(request, file_id):
             # Verify for the logs
             new_uploaded_file.refresh_from_db()
             print(f"✅ VERIFIED: DB now holds {len(str(new_uploaded_file.style_data))} characters.")
+            
+            # Run validation on the newly saved file
+            from .utils import validate_excel_data
+            validate_excel_data(new_uploaded_file)
+            print(f"Validation called for file ID {new_uploaded_file.id}")
+            print("✅ Validation completed for edited file.")
             print("="*50 + "\n")
 
             return JsonResponse(
