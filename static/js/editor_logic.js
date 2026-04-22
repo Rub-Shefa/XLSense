@@ -38,11 +38,20 @@ function captureState() {
                 rowData.push({
                     text: td ? td.innerText : '',
                     style: td ? td.style.cssText : '',
-                    formula: (td && cellFormulas.has(td)) ? cellFormulas.get(td) : ''
+                    formula: (td && cellFormulas.has(td)) ? cellFormulas.get(td) : '',
+                    hasError: td ? td.classList.contains('validation-error') : false,
+                    errorMsg: td ? td.getAttribute('data-error') : '',
+                    errorId: td ? td.getAttribute('data-error-id') : ''
                 });
             });
             rows.push(rowData);
         });
+
+        // Only push if we have actual data
+        if (headers.length === 0 || rows.length === 0) {
+            console.warn('Skipping captureState: empty table');
+            return;
+        }
 
         const currentState = { headers: headers, rows: rows };
         const currentStateJson = JSON.stringify(currentState);
@@ -54,12 +63,15 @@ function captureState() {
             if (historyStack.length > 50) historyStack.shift();
         }
     } catch (e) {
-        console.warn("Capture state error (Caught):", e);
+        console.warn("Capture state error:", e);
     }
 }
 
 function restoreState(state) {
-    if (!state) return;
+    if (!state || !state.headers || !state.rows || state.rows.length === 0) {
+        console.warn('Invalid state, skipping restore');
+        return;
+    }
     isRestoring = true;
 
     try {
@@ -99,6 +111,45 @@ function restoreState(state) {
                 if (cellData.formula && newCells[ci]) {
                     cellFormulas.set(newCells[ci], cellData.formula);
                 }
+                // Restore validation error
+                if (cellData.hasError && newCells[ci]) {
+                    newCells[ci].classList.add('validation-error');
+                    if (cellData.errorMsg) newCells[ci].setAttribute('data-error', cellData.errorMsg);
+                    if (cellData.errorId) newCells[ci].setAttribute('data-error-id', cellData.errorId);
+                    if (!newCells[ci].querySelector('.error-explain-btn')) {
+                        const explainBtn = document.createElement('button');
+                        explainBtn.textContent = 'Explain';
+                        explainBtn.className = 'error-explain-btn';
+                        explainBtn.style.display = 'none';
+                        explainBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            fetch('/ai-explain/', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+                                body: JSON.stringify({ result_id: cellData.errorId })
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                const panel = document.createElement('div');
+                                panel.className = 'floating-explanation-panel';
+                                panel.innerHTML = `
+                                    <div class="ai-explanation-box">
+                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                                        <div class="ai-content">${data.explanation}</div>
+                                    </div>
+                                    <button class="close-explanation">×</button>
+                                `;
+                                document.body.appendChild(panel);
+                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                                setTimeout(() => panel.remove(), 8000);
+                            })
+                            .catch(err => console.error(err));
+                        };
+                        newCells[ci].appendChild(explainBtn);
+                        newCells[ci].addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
+                        newCells[ci].addEventListener('mouseleave', () => explainBtn.style.display = 'none');
+                    }
+                }
             });
         });
 
@@ -109,14 +160,17 @@ function restoreState(state) {
         activeCell = null;
         clearSelection();
     } catch (e) {
-        console.error("Critical error during Undo restoration:", e);
+        console.error("Error during restoreState:", e);
     } finally {
         setTimeout(() => { isRestoring = false; }, 10);
     }
 }
 
 function undo() {
-    if (historyStack.length < 2) return;
+    if (historyStack.length < 2) {
+        console.warn('Not enough history to undo');
+        return;
+    }
     const current = historyStack.pop();
     redoStack.push(current);
     const prev = historyStack[historyStack.length - 1];
@@ -736,38 +790,76 @@ function attachCellEvents() {
         }
         updateValueDisplayForCell(cell);
         
-        // --- Re‑validate error on edit ---
+        // Get column name from header
+        const colIndex = cell.cellIndex;
+        const headerCell = document.querySelector(`#headerRow th:nth-child(${colIndex+1}) .header-label`);
+        const columnName = headerCell ? headerCell.innerText.trim() : '';
+        // Get all column names and current row values
+const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-header-cell)'));
+const rowCells = Array.from(cell.parentElement.querySelectorAll('td.editable-cell'));
+const rowData = {};
+headers.forEach((th, idx) => {
+    const colName = th.querySelector('.header-label')?.innerText.trim();
+    if (colName && rowCells[idx]) {
+        rowData[colName] = rowCells[idx].innerText.trim();
+    }
+});
+// Then add rowData to the fetch body
+        if (columnName) {
+            fetch('/validate-cell/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+                body: JSON.stringify({
+                    file_id: window.DJANGO_VARS.fileId,
+                    column: columnName,
+                    value: currentValue,
+                    row: cell.parentElement.rowIndex
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.is_valid) {
+                    if (!cell.classList.contains('validation-error')) {
+                        cell.classList.add('validation-error');
+                        cell.setAttribute('data-error', data.error_message);
+                        const tempId = -Date.now();
+                        cell.setAttribute('data-error-id', tempId);
+                        if (!cell.querySelector('.error-explain-btn')) {
+                            const explainBtn = document.createElement('button');
+                            explainBtn.textContent = 'Explain';
+                            explainBtn.className = 'error-explain-btn';
+                            explainBtn.style.display = 'none';
+                            explainBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                const panel = document.createElement('div');
+                                panel.className = 'floating-explanation-panel';
+                                panel.innerHTML = `
+                                    <div class="ai-explanation-box">
+                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                                        <div class="ai-content">${data.error_message}</div>
+                                    </div>
+                                    <button class="close-explanation">×</button>
+                                `;
+                                document.body.appendChild(panel);
+                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                                setTimeout(() => panel.remove(), 8000);
+                            };
+                            cell.appendChild(explainBtn);
+                            cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
+                            cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
+                        }
+                    }
+                } else {
         if (cell.classList.contains('validation-error')) {
-            const errorMsg = cell.getAttribute('data-error') || '';
-            const num = parseFloat(currentValue);
-            let isValid = false;
-            // Parse the error message to extract the rule
-            if (errorMsg.includes('between') || errorMsg.includes('must be between')) {
-                const match = errorMsg.match(/(\d+)\s*[-–]\s*(\d+)/) || errorMsg.match(/(\d+) and (\d+)/);
-                if (match && !isNaN(num)) {
-                    const min = parseFloat(match[1]);
-                    const max = parseFloat(match[2]);
-                    isValid = num >= min && num <= max;
+            cell.classList.remove('validation-error');
+            const btn = cell.querySelector('.error-explain-btn');
+            if (btn) btn.remove();
+            cell.removeAttribute('data-error');
+            cell.removeAttribute('data-error-id');
+        }
                 }
-            } else if (errorMsg.includes('cannot exceed') || errorMsg.includes('≤')) {
-                const match = errorMsg.match(/(\d+)/);
-                if (match && !isNaN(num)) {
-                    const max = parseFloat(match[1]);
-                    isValid = num <= max;
-                }
-            } else if (errorMsg.includes('not be empty')) {
-                isValid = currentValue !== '';
-            }
-            
-            if (isValid) {
-                cell.classList.remove('validation-error');
-                const btn = cell.querySelector('.error-explain-btn');
-                if (btn) btn.remove();
-                cell.removeAttribute('data-error');
-                cell.removeAttribute('data-error-id');
-            } else if (!isValid && num !== undefined && !isNaN(num)) {
-                // Keep the error – no change
-            }
+            })
+            .catch(err => console.error('Validation error:', err));
         }
     }
 });
@@ -1362,37 +1454,38 @@ if (window.DJANGO_VARS.errorsData && window.DJANGO_VARS.errorsData.length) {
                 cell.setAttribute('data-error', err.message);
                 cell.setAttribute('data-error-id', err.id);
                 const explainBtn = document.createElement('button');
-                explainBtn.textContent = 'Explain';
-                explainBtn.className = 'error-explain-btn';
-                explainBtn.style.display = 'none';
-                explainBtn.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    fetch('/ai-explain/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
-                        body: JSON.stringify({ result_id: err.id })
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        const panel = document.createElement('div');
-                        panel.className = 'floating-explanation-panel';
-                        panel.innerHTML = `
-                            <div class="ai-explanation-box">
-                                <div class="ai-insight-header">
-                                    <span class="sparkle-icon">✨</span>
-                                    <strong>Intelligent Auditor Analysis</strong>
-                                </div>
-                                <div class="ai-content">${markdownToHtml(data.explanation)}</div>
-                            </div>
-                            <button class="close-explanation">×</button>
-                        `;
-                        document.body.appendChild(panel);
-                        panel.querySelector('.close-explanation').onclick = () => panel.remove();
-                        setTimeout(() => panel.remove(), 10000);
-                    })
-                    .catch(err => console.error(err));
-                };
+explainBtn.textContent = 'AI Explain';
+explainBtn.className = 'ai-explain-btn';
+explainBtn.setAttribute('data-result-id', err.id);
+explainBtn.setAttribute('data-row', err.row);
+explainBtn.setAttribute('data-column', err.column);
+explainBtn.setAttribute('title', 'Get AI explanation');
+explainBtn.contentEditable = 'false';
+explainBtn.style.display = 'none';
+explainBtn.onclick = (e) => {
+    e.stopPropagation();
+    fetch('/ai-explain/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+        body: JSON.stringify({ result_id: err.id })
+    })
+    .then(res => res.json())
+    .then(data => {
+        const panel = document.createElement('div');
+        panel.className = 'floating-explanation-panel';
+        panel.innerHTML = `
+            <div class="ai-explanation-box">
+                <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                <div class="ai-content">${markdownToHtml(data.explanation)}</div>
+            </div>
+            <button class="close-explanation">×</button>
+        `;
+        document.body.appendChild(panel);
+        panel.querySelector('.close-explanation').onclick = () => panel.remove();
+        setTimeout(() => panel.remove(), 8000);
+    })
+    .catch(err => console.error(err));
+};
                 cell.appendChild(explainBtn);
                 cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
                 cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
@@ -1402,20 +1495,17 @@ if (window.DJANGO_VARS.errorsData && window.DJANGO_VARS.errorsData.length) {
 }
 
     // --- Recommendations panel (always visible, placed after status bar) ---
-const panel = document.createElement('div');
-panel.id = 'recommendationsPanel';
-panel.className = 'recommendations-wrapper';
-panel.innerHTML = `
-    <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
-    <div class="recommendation-grid" id="recGrid"></div>
-`;
-const statusBar = document.querySelector('.status-bar');
-if (statusBar) {
-    statusBar.insertAdjacentElement('afterend', panel);
-} else {
-    document.body.appendChild(panel);
-}
-const recGrid = document.getElementById('recGrid');
+const targetContainer = document.getElementById('recommendationsTarget');
+if (targetContainer) {
+    const panel = document.createElement('div');
+    panel.id = 'recommendationsPanel';
+    panel.className = 'recommendations-wrapper';
+    panel.innerHTML = `
+        <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
+        <div class="recommendation-grid" id="recGrid"></div>
+    `;
+    targetContainer.appendChild(panel);
+    const recGrid = document.getElementById('recGrid');
 if (window.DJANGO_VARS.recommendations && window.DJANGO_VARS.recommendations.length) {
     window.DJANGO_VARS.recommendations.forEach(rec => {
         const card = document.createElement('div');
@@ -1445,6 +1535,6 @@ if (window.DJANGO_VARS.recommendations && window.DJANGO_VARS.recommendations.len
     console.log("Raw DJANGO_VARS.styleData value:", window.DJANGO_VARS.styleData);
     console.log("Parsed styles variable:", styles);
 }
-
+}
 init();
 

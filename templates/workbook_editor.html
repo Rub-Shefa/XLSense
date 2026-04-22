@@ -131,9 +131,28 @@
 </div>
 
 <!-- Spreadsheet Container -->
-<div class="grid-container">
-    <table class="excel-table" id="excelTable">
-        <thead>
+
+<!-- Floating formula panel (hidden by default) -->
+<div id="formulaPanel" style="display: none; position: absolute; background: #ffffff; border: 2px solid #1e6f3f; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.2); padding: 12px; z-index: 1000; width: 360px;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+        <button class="panel-formula-btn" data-func="SUM">SUM</button>
+        <button class="panel-formula-btn" data-func="AVERAGE">AVG</button>
+        <button class="panel-formula-btn" data-func="COUNT">COUNT</button>
+        <button class="panel-formula-btn" data-func="COUNTA">COUNTA</button>
+        <button class="panel-formula-btn" data-func="MAX">MAX</button>
+        <button class="panel-formula-btn" data-func="MIN">MIN</button>
+        <button class="panel-formula-btn" data-func="IF">IF</button>
+        <button class="panel-formula-btn" data-func="COUNTIF">COUNTIF</button>
+        <button class="panel-formula-btn" data-func="VLOOKUP">VLOOKUP</button>
+        <button class="panel-formula-btn" data-func="XLOOKUP">XLOOKUP</button>
+    </div>
+</div>
+
+<!-- Wrap the grid and recommendations in a scrollable area -->
+<div class="main-scroll-area">
+    <div class="grid-container">
+        <table class="excel-table" id="excelTable">
+            <thead>
             <tr id="headerRow">
                 <th class="row-header-cell" style="width:55px;"><i class="fas fa-grip-vertical"></i></th>
                 {% for col_info in columns_with_classes %}
@@ -164,28 +183,16 @@
                     <button class="row-delete-btn" onclick="deleteRowHandler(this)"><i class="fas fa-trash-alt"></i></button>
                 </td>
                 {% for cell in row %}
-                <td contenteditable="true" class="editable-cell">{{ cell }}</td>
+                <td contenteditable="true" class="editable-cell" data-value="{{ cell }}">{{ cell }}</td>
                 {% endfor %}
             </tr>
             {% endfor %}
         </tbody>
-    </table>
-</div>
-<!-- Floating formula panel (hidden by default) -->
-<div id="formulaPanel" style="display: none; position: absolute; background: #ffffff; border: 2px solid #1e6f3f; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.2); padding: 12px; z-index: 1000; width: 360px;">
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-        <button class="panel-formula-btn" data-func="SUM">SUM</button>
-        <button class="panel-formula-btn" data-func="AVERAGE">AVG</button>
-        <button class="panel-formula-btn" data-func="COUNT">COUNT</button>
-        <button class="panel-formula-btn" data-func="COUNTA">COUNTA</button>
-        <button class="panel-formula-btn" data-func="MAX">MAX</button>
-        <button class="panel-formula-btn" data-func="MIN">MIN</button>
-        <button class="panel-formula-btn" data-func="IF">IF</button>
-        <button class="panel-formula-btn" data-func="COUNTIF">COUNTIF</button>
-        <button class="panel-formula-btn" data-func="VLOOKUP">VLOOKUP</button>
-        <button class="panel-formula-btn" data-func="XLOOKUP">XLOOKUP</button>
+        </table>
     </div>
+    <div id="recommendationsTarget"></div>
 </div>
+
 <div class="status-bar">
     <div><i class="fas fa-table-cells-large"></i> <span id="rowCount">0</span> rows · <span id="colCount">0</span> columns</div>
     <div><i class="fas fa-database"></i> Ready · XLSense Intelligent Automation</div>
@@ -200,10 +207,10 @@
         uploadUrl: "{% url 'upload_file' %}",
         csrfToken: "{{ csrf_token }}",
         errorsData: {{ errors_data_json|safe }},
-        recommendations: {{ recommendations_json|safe }}
+        recommendations: {{ recommendations_json|safe }},
+        fileId: {{ file.id }},
     };
 </script>
-
     <script src="{% static 'js/editor_logic.js' %}"></script>
 
 </body>

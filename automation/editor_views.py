@@ -319,3 +319,65 @@ def save_workbook_data(request, file_id):
             return JsonResponse({"status": "failed", "error": str(e)}, status=500)
 
     return JsonResponse({"status": "failed"}, status=400)
+
+@csrf_exempt
+@login_required
+def validate_single_cell(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=400)
+    
+    data = json.loads(request.body)
+    file_id = data.get('file_id')
+    column_name = data.get('column')
+    value = data.get('value')
+    row_index = data.get('row') - 1  # convert to 0‑based
+    
+    uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+    template = uploaded_file.template
+    
+    # Get all validation rules for this template
+    from .models import ValidationRule
+    rules = ValidationRule.objects.filter(template=template)
+    
+    # Normalize the column name from the frontend
+    def normalize(s):
+        return re.sub(r'[ _()%\-/]', '', s).lower()
+    
+    target_norm = normalize(column_name)
+    matched_rule = None
+    for rule in rules:
+        rule_norm = normalize(rule.column_name)
+        if rule_norm == target_norm or rule_norm in target_norm or target_norm in rule_norm:
+            matched_rule = rule
+            break
+    
+    if not matched_rule:
+        return JsonResponse({'is_valid': True})  # No rule for this column
+    
+    # Evaluate the rule against the single value
+    try:
+        # Try to convert value to number if possible
+        if value.replace('.', '', 1).isdigit():
+            val = float(value)
+        else:
+            val = value
+        allowed_locals = {'x': val, 'index': row_index}
+        allowed_globals = {
+            '__builtins__': None,
+            'str': str,
+            'int': int,
+            'float': float,
+            'len': len,
+            'abs': abs,
+            'round': round,
+        }
+        is_valid = eval(matched_rule.condition_expression, allowed_globals, allowed_locals)
+        error_msg = matched_rule.error_message if not is_valid else ''
+    except Exception as e:
+        is_valid = False
+        error_msg = f'Evaluation error: {str(e)}'
+    
+    return JsonResponse({
+        'is_valid': is_valid,
+        'error_message': error_msg,
+    })

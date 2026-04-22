@@ -101,6 +101,8 @@ def validate_excel_data(uploaded_file_obj):
     template = uploaded_file_obj.template
     rules = ValidationRule.objects.filter(template=template)
     formula_rules = FormulaRule.objects.filter(template=template)
+    ValidationResult.objects.filter(file=uploaded_file_obj).delete()
+
 
     print(f"Validating file: {uploaded_file_obj.file.name}")
     print(f"DataFrame columns: {list(df.columns)}")
@@ -186,50 +188,63 @@ def validate_excel_data(uploaded_file_obj):
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     from .models import FormulaRule, ValidationRule
+    import pandas as pd
 
     template = uploaded_file_obj.template
     validation_cols = set(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
     formula_cols = set(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
     all_domain_cols = validation_cols.union(formula_cols)
 
-    print("\n--- DEBUG: get_formula_recommendations ---")
-    print("Domain columns:", all_domain_cols)
-    print("File columns:", list(df_columns))
+    # Load the actual DataFrame to check column content
+    file_path = uploaded_file_obj.file.path
+    if file_path.endswith('.csv'):
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_excel(file_path)
+    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
+    df = preprocess_dataframe(df)
+    df = remove_empty_unnamed_columns(df)
 
-    file_columns = list(df_columns)
+    actual_columns = list(df.columns)
+    file_columns = actual_columns
+
+    # AI matching
     ai_mapping = {}
     if file_columns and all_domain_cols:
         ai_mapping = ai_match_columns(file_columns, list(all_domain_cols))
-    print("AI mapping (file_col -> db_col):", ai_mapping)
     reverse_map = {}
     for file_col, db_col in ai_mapping.items():
         reverse_map[db_col] = file_col
-    print("Reverse map (db_col -> file_col):", reverse_map)
 
     recommendations = []
     for domain_col in all_domain_cols:
-        if domain_col in reverse_map:
-            print(f"  -> '{domain_col}' matched via AI to '{reverse_map[domain_col]}' -> skipping")
-            continue
-        actual_col = find_best_column(domain_col, df_columns)
-        if actual_col:
-            print(f"  -> '{domain_col}' matched via fuzzy to '{actual_col}' -> skipping")
-            continue
-        print(f"  -> '{domain_col}' is missing -> adding recommendation")
-        formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
-        if formula_rule:
-            formula = formula_rule.condition_expression
-            message = f"Suggested: Create '{domain_col}' column. Use the formula below to calculate it."
+        # Check if column exists (via AI or fuzzy)
+        actual_col = reverse_map.get(domain_col) or find_best_column(domain_col, actual_columns)
+        exists = actual_col is not None
+
+        if not exists:
+            # Column missing entirely
+            formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
+            if formula_rule:
+                formula = formula_rule.condition_expression
+                message = f"Suggested: Create '{domain_col}' column. Use the formula below to calculate it."
+            else:
+                formula = ""
+                message = f"Suggested: Create '{domain_col}' column (required for validation)."
+            recommendations.append({"column": domain_col, "formula": formula, "message": message})
         else:
-            formula = ""
-            message = f"Suggested: Create '{domain_col}' column (required for validation)."
-        recommendations.append({
-            "column": domain_col,
-            "formula": formula,
-            "message": message,
-        })
-    print("Recommendations generated:", recommendations)
-    print("----------------------------------------\n")
+            # Column exists – check if it's completely empty (or only dashes)
+            col_data = df[actual_col].astype(str).str.strip()
+            is_empty = col_data.isin(['', '-', 'nan', 'None']).all()
+            if is_empty:
+                formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
+                if formula_rule:
+                    formula = formula_rule.condition_expression
+                    message = f"Suggested: Column '{domain_col}' exists but is empty. Use the formula below to populate it."
+                else:
+                    formula = ""
+                    message = f"Suggested: Column '{domain_col}' exists but is empty. Please fill it."
+                recommendations.append({"column": domain_col, "formula": formula, "message": message})
     return recommendations
 
 def calculate_quality_score(uploaded_file_obj, total_rows):

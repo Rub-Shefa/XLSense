@@ -40,6 +40,7 @@ urlpatterns = [
         editor_views.save_workbook_data,
         name="save_workbook",
     ),
+    path('validate-cell/', editor_views.validate_single_cell, name='validate_single_cell'),
 
     path('text-import/', text_import_view, name='text_import'),
     path('text-import/download/', download_ai_excel, name='download_ai_excel'),
