@@ -1,3 +1,4 @@
+from pyexpat import errors
 import re
 import json
 import os
@@ -14,9 +15,8 @@ from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.core.files.base import ContentFile
 
-# Import your models and utils
-from .models import UploadedFile, ValidationRule, FormulaRule
-from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, validate_excel_data
+from .models import UploadedFile, ValidationRule, FormulaRule, ValidationResult
+from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, validate_excel_data, get_formula_recommendations
 
 @login_required
 def workbook_editor_view(request, file_id):
@@ -166,17 +166,40 @@ def workbook_editor_view(request, file_id):
     style_data_json = json.dumps(style_data)
     formulas_data_json = json.dumps(formulas_data)
 
+
+
+    # Run validation on the file (if not already done)
+    validate_excel_data(uploaded_file)
+
+    # Get all validation errors for this file
+    errors = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
+    errors_data = [
+         {
+            "row": err.row_index,
+            "column": err.column_name,
+             "message": err.error_details,
+             "id": err.id,
+         }
+         for err in errors
+        ]
+
+    # Get formula recommendations
+    recommendations = get_formula_recommendations(uploaded_file, df.columns)
+    print("RECOMMENDATIONS FROM BACKEND:", recommendations)
+
     return render(request, "workbook_editor.html", {
-        "file": uploaded_file,
-        "current_columns": current_columns,
-        "columns_with_classes": columns_with_classes,
-        "db_columns": db_columns,
-        "user_columns": user_columns_original,
-        "preview_data": preview_data,
-        "saved_mappings_json": saved_mappings_json,
-        "style_data_json": style_data_json,
-        "formulas_data_json": formulas_data_json,
-    })
+    "file": uploaded_file,
+    "current_columns": current_columns,
+    "columns_with_classes": columns_with_classes,
+    "db_columns": db_columns,
+    "user_columns": user_columns_original,
+    "preview_data": preview_data,
+    "saved_mappings_json": saved_mappings_json,
+    "style_data_json": style_data_json,
+    "formulas_data_json": formulas_data_json,
+    "errors_data_json": json.dumps(errors_data),        
+    "recommendations_json": json.dumps(recommendations), 
+})
 
 
 @csrf_exempt

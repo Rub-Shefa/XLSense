@@ -134,6 +134,47 @@ function escapeHtml(str) {
     if (typeof str !== 'string') return '';
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;'));
 }
+function markdownToHtml(text) {
+    if (!text) return '';
+    var html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+
+    // Bold italic, bold, italic
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Inline code
+    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+
+    // Unordered lists
+    html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+    // Numbered lists
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+    // Paragraphs
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = '<p>' + html + '</p>';
+    html = html.replace(/<p><\/p>/g, '');
+    html = html.replace(/<p>(<h[234]>)/g, '$1');
+    html = html.replace(/(<\/h[234]>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<ul>)/g, '$1');
+    html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+
+    // Line breaks
+    html = html.replace(/(?<!<\/li>)(?<!<\/ul>)(?<!<\/h[234]>)\n(?!<)/g, '<br>');
+
+    return html;
+}
 
 // ==========================================
 // 3. ENHANCED FORMULA EVALUATION (with IF, COUNTIF, COUNTA, XLOOKUP, VLOOKUP)
@@ -690,10 +731,44 @@ function attachCellEvents() {
     if (activeCell === cell) {
         const currentValue = cell.innerText.trim();
         const storedFormula = cellFormulas.get(cell);
-        if (currentValue === '' && storedFormula) {
+        if (!currentValue.startsWith('=') && storedFormula) {
             cellFormulas.delete(cell);
         }
         updateValueDisplayForCell(cell);
+        
+        // --- Re‑validate error on edit ---
+        if (cell.classList.contains('validation-error')) {
+            const errorMsg = cell.getAttribute('data-error') || '';
+            const num = parseFloat(currentValue);
+            let isValid = false;
+            // Parse the error message to extract the rule
+            if (errorMsg.includes('between') || errorMsg.includes('must be between')) {
+                const match = errorMsg.match(/(\d+)\s*[-–]\s*(\d+)/) || errorMsg.match(/(\d+) and (\d+)/);
+                if (match && !isNaN(num)) {
+                    const min = parseFloat(match[1]);
+                    const max = parseFloat(match[2]);
+                    isValid = num >= min && num <= max;
+                }
+            } else if (errorMsg.includes('cannot exceed') || errorMsg.includes('≤')) {
+                const match = errorMsg.match(/(\d+)/);
+                if (match && !isNaN(num)) {
+                    const max = parseFloat(match[1]);
+                    isValid = num <= max;
+                }
+            } else if (errorMsg.includes('not be empty')) {
+                isValid = currentValue !== '';
+            }
+            
+            if (isValid) {
+                cell.classList.remove('validation-error');
+                const btn = cell.querySelector('.error-explain-btn');
+                if (btn) btn.remove();
+                cell.removeAttribute('data-error');
+                cell.removeAttribute('data-error-id');
+            } else if (!isValid && num !== undefined && !isNaN(num)) {
+                // Keep the error – no change
+            }
+        }
     }
 });
     });
@@ -1263,6 +1338,106 @@ if (formulaBtn && formulaPanel) {
     });
 });
 }
+
+    // --- Validation error highlighting (deduplicated) ---
+if (window.DJANGO_VARS.errorsData && window.DJANGO_VARS.errorsData.length) {
+    // Use a Map to store only one button per cell
+    const cellToError = new Map();
+    window.DJANGO_VARS.errorsData.forEach(err => {
+        const row = err.row - 1;
+        const errCol = err.column.trim().toLowerCase();
+        const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-header-cell)'));
+        const normalize = s => s.replace(/[\s_()%\-/]/g, '').toLowerCase();
+        const colIndex = headers.findIndex(th => {
+            const label = th.querySelector('.header-label');
+            if (!label) return false;
+            const headerText = label.innerText.trim().toLowerCase();
+            return normalize(headerText) === normalize(errCol);
+        });
+        if (colIndex >= 0) {
+            const cell = document.querySelector(`#tableBody tr:nth-child(${row+1}) td.editable-cell:nth-child(${colIndex+2})`);
+            if (cell && !cellToError.has(cell)) {
+                cellToError.set(cell, err);
+                cell.classList.add('validation-error');
+                cell.setAttribute('data-error', err.message);
+                cell.setAttribute('data-error-id', err.id);
+                const explainBtn = document.createElement('button');
+                explainBtn.textContent = 'Explain';
+                explainBtn.className = 'error-explain-btn';
+                explainBtn.style.display = 'none';
+                explainBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fetch('/ai-explain/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+                        body: JSON.stringify({ result_id: err.id })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        const panel = document.createElement('div');
+                        panel.className = 'floating-explanation-panel';
+                        panel.innerHTML = `
+                            <div class="ai-explanation-box">
+                                <div class="ai-insight-header">
+                                    <span class="sparkle-icon">✨</span>
+                                    <strong>Intelligent Auditor Analysis</strong>
+                                </div>
+                                <div class="ai-content">${markdownToHtml(data.explanation)}</div>
+                            </div>
+                            <button class="close-explanation">×</button>
+                        `;
+                        document.body.appendChild(panel);
+                        panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                        setTimeout(() => panel.remove(), 10000);
+                    })
+                    .catch(err => console.error(err));
+                };
+                cell.appendChild(explainBtn);
+                cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
+                cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
+            }
+        }
+    });
+}
+
+    // --- Recommendations panel (always visible, placed after status bar) ---
+const panel = document.createElement('div');
+panel.id = 'recommendationsPanel';
+panel.className = 'recommendations-wrapper';
+panel.innerHTML = `
+    <h3 class="section-title"><span class="icon-sm">💡</span> Intelligent Recommendations</h3>
+    <div class="recommendation-grid" id="recGrid"></div>
+`;
+const statusBar = document.querySelector('.status-bar');
+if (statusBar) {
+    statusBar.insertAdjacentElement('afterend', panel);
+} else {
+    document.body.appendChild(panel);
+}
+const recGrid = document.getElementById('recGrid');
+if (window.DJANGO_VARS.recommendations && window.DJANGO_VARS.recommendations.length) {
+    window.DJANGO_VARS.recommendations.forEach(rec => {
+        const card = document.createElement('div');
+        card.className = 'rec-card';
+        card.innerHTML = `
+            <div class="rec-header"><h4>Missing Column: <span>${rec.column}</span></h4></div>
+            <div class="rec-body">
+                <p>${rec.message}</p>
+                <div class="formula-box"><strong>Formula:</strong> <code>${rec.formula}</code></div>
+            </div>
+        `;
+        recGrid.appendChild(card);
+    });
+} else {
+    const noRecCard = document.createElement('div');
+    noRecCard.className = 'rec-card';
+    noRecCard.innerHTML = `
+        <div class="rec-body"><p><strong>✓ Structure Verified:</strong> All expected columns and formulas are present.</p></div>
+    `;
+    recGrid.appendChild(noRecCard);
+}
+
     captureState();
     console.log("🔄 Editor initialized with multi‑cell selection and advanced formulas.");
     console.log("🔄 STEP 5 (JS IN): Page loaded. What did Django give us?");
@@ -1272,3 +1447,4 @@ if (formulaBtn && formulaPanel) {
 }
 
 init();
+

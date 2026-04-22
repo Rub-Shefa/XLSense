@@ -192,15 +192,17 @@
 </div>
 
 <script>
-        window.DJANGO_VARS = {
-            savedMappings: {{ saved_mappings_json|safe|default:"{}" }},
-            styleData: {{ style_data_json|safe|default:"[]" }},
-            formulasData: {{ formulas_data_json|safe|default:"[]" }},
-            saveUrl: "{% url 'save_workbook' file.id %}",
-            uploadUrl: "{% url 'upload_file' %}",
-            csrfToken: "{{ csrf_token }}"
-        };
-    </script>
+    window.DJANGO_VARS = {
+        savedMappings: {{ saved_mappings_json|safe|default:"{}" }},
+        styleData: {{ style_data_json|safe|default:"[]" }},
+        formulasData: {{ formulas_data_json|safe|default:"[]" }},
+        saveUrl: "{% url 'save_workbook' file.id %}",
+        uploadUrl: "{% url 'upload_file' %}",
+        csrfToken: "{{ csrf_token }}",
+        errorsData: {{ errors_data_json|safe }},
+        recommendations: {{ recommendations_json|safe }}
+    };
+</script>
 
     <script src="{% static 'js/editor_logic.js' %}"></script>
 
