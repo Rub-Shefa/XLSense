@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/theme.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="history-page-wrapper">
+    <div class="history-header">
+        <div class="header-left">
+            <h1>🗑️ Trash</h1>
+            <p class="stats-mini">Files in trash: {{ files|length }}</p>
+        </div>
+        <div class="header-right">
+            <a href="{% url 'upload_history' %}" class="btn-new-upload">← Back to History</a>
+        </div>
+    </div>
+
+    <div class="history-card-box">
+        <table class="history-data-table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Domain</th>
+                    <th>Deleted</th>
+                    <th>Expires</th>
+                    <th class="text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr class="history-data-row">
+                    <td class="filename-cell">
+                        <span class="file-icon">📄</span>
+                        {{ file.short_name }}
+                    </td>
+                    <td>
+                        <span class="domain-badge">
+                            {{ file.template.domain_type|default:"General" }}
+                        </span>
+                    </td>
+                    <td class="date-cell">
+                        <span class="d-text">{{ file.deleted_at|date:"M d, Y" }}</span>
+                        <span class="t-text">{{ file.deleted_at|date:"H:i" }}</span>
+                    </td>
+                    <td class="date-cell">
+                        <span class="d-text">{{ file.trash_expires_at|date:"M d, Y" }}</span>
+                    </td>
+                    <td class="text-center">
+                        <div class="actions-flex">
+                            <button class="icon-btn restore-btn" data-file-id="{{ file.id }}" data-filename="{{ file.short_name }}" title="Restore">♻️ Restore</button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">
+                        <div class="empty-content">
+                            <img src="https://cdn-icons-png.flaticon.com/512/7486/7486744.png" alt="No Data">
+                            <p>Trash is empty. Deleted files will appear here.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Restore Confirmation Modal -->
+<div class="modal-overlay" id="restoreModal">
+    <div class="modal-content">
+        <div class="modal-title">Restore this file?</div>
+        <div class="modal-message">
+            <span id="restoreFileName"></span> will be restored to your active files.
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" id="cancelRestore">Cancel</button>
+            <button class="btn-confirm-restore" id="confirmRestore">
+                <span class="spinner"></span>Restore
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .history-page-wrapper {
+        padding: 30px;
+        max-width: 1200px;
+        margin: 0 auto;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    .history-header h1 { font-size: 20px; color: var(--color-text); font-weight: 700; margin: 0; }
+    .stats-mini { color: var(--color-text-muted); font-size: 14px; margin-top: 4px; }
+
+    .history-card-box {
+        background: var(--color-surface);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+    }
+    .history-data-table { width: 100%; border-collapse: collapse; }
+    .history-data-table th { background: var(--color-bg); padding: 14px 18px; font-size: 11px; text-transform: uppercase; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); }
+    .history-data-table td { padding: 14px 18px; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
+    .history-data-row:hover { background-color: rgba(102,126,234,0.05); }
+
+    .filename-cell { font-weight: 500; }
+    .domain-badge { background: rgba(102,126,234,0.15); color: var(--color-accent); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .date-cell { color: var(--color-text-muted); font-size: 13px; }
+    .d-text { display: block; }
+    .t-text { display: block; font-size: 11px; opacity: 0.7; }
+
+    .actions-flex { display: flex; align-items: center; gap: 12px; justify-content: center; }
+
+    .btn-new-upload {
+        background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+        color: #ffffff !important;
+        padding: 10px 22px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+        display: inline-block;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    .btn-new-upload:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(118, 75, 162, 0.45);
+    }
+
+    .restore-btn {
+        background: rgba(39, 174, 96, 0.1);
+        border: 1px solid #27ae60;
+        color: #27ae60;
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        text-decoration: none;
+    }
+    .restore-btn:hover {
+        background: #27ae60;
+        color: #ffffff;
+    }
+
+    .empty-state-cell { padding: 80px 20px !important; text-align: center; }
+    .empty-content img { width: 60px; opacity: 0.3; margin-bottom: 15px; }
+    .empty-content p { color: var(--color-text-muted); font-size: 16px; font-style: italic; }
+
+    /* Modal styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-content {
+        background: var(--color-surface);
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+    .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 15px; color: var(--color-text); }
+    .modal-message { color: var(--color-text-muted); margin-bottom: 25px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
+    .btn-cancel {
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: 1px solid var(--color-border);
+        background: var(--color-surface);
+        color: var(--color-text);
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .btn-confirm-restore {
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: none;
+        background: #27ae60;
+        color: #ffffff;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .btn-confirm-restore:hover { background: #219a52; }
+    .btn-confirm-restore.loading { opacity: 0.7; cursor: not-allowed; }
+    .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid #ffffff;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        display: none;
+    }
+    .btn-confirm-restore.loading .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    var modal = document.getElementById("restoreModal");
+    var fileNameSpan = document.getElementById("restoreFileName");
+    var confirmBtn = document.getElementById("confirmRestore");
+    var cancelBtn = document.getElementById("cancelRestore");
+    var currentFileId = null;
+    var restoreButtons = document.querySelectorAll(".restore-btn");
+
+    restoreButtons.forEach(function(btn) {
+        btn.addEventListener("click", function() {
+            currentFileId = this.getAttribute("data-file-id");
+            var fileName = this.getAttribute("data-filename");
+            fileNameSpan.textContent = fileName;
+            modal.classList.add("active");
+        });
+    });
+
+    cancelBtn.addEventListener("click", function() {
+        modal.classList.remove("active");
+        currentFileId = null;
+    });
+
+    modal.addEventListener("click", function(e) {
+        if (e.target === modal) {
+            modal.classList.remove("active");
+            currentFileId = null;
+        }
+    });
+
+    confirmBtn.addEventListener("click", function() {
+        if (!currentFileId) return;
+        confirmBtn.classList.add("loading");
+        confirmBtn.disabled = true;
+
+        fetch("/api/files/" + currentFileId + "/status/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token }}"
+            },
+            body: JSON.stringify({ status: "active" })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            confirmBtn.classList.remove("loading");
+            modal.classList.remove("active");
+            if (data.status === "active") {
+                var btn = document.querySelector('[data-file-id="' + currentFileId + '"]');
+                var row = btn ? btn.closest("tr") : null;
+                if (row) row.remove();
+                var countEl = document.querySelector(".stats-mini");
+                if (countEl) {
+                    var current = parseInt(countEl.textContent.replace(/[^0-9]/g, "")) || 1;
+                    countEl.textContent = "Files in trash: " + (current - 1);
+                }
+            } else {
+                alert("Failed to restore file");
+            }
+        })
+        .catch(function(err) {
+            confirmBtn.classList.remove("loading");
+            confirmBtn.disabled = false;
+            alert("Error restoring file");
+        });
+    });
+});
+</script>
+
+{% endblock %}
