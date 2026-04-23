@@ -340,7 +340,8 @@ def validate_single_cell(request):
     file_id = data.get('file_id')
     column_name = data.get('column')
     value = data.get('value')
-    row_index = data.get('row') - 1  
+    # Use .get with default to prevent 'None' type errors on row index
+    row_index = (data.get('row') or 1) - 1  
     row_data = data.get('rowData', {}) 
     
     uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
@@ -356,7 +357,7 @@ def validate_single_cell(request):
     matched_rule = None
     for rule in rules:
         rule_norm = normalize(rule.column_name)
-        if rule_norm == target_norm or rule_norm in target_norm or target_norm in rule_norm:
+        if rule_norm == target_norm:
             matched_rule = rule
             break
     
@@ -364,54 +365,54 @@ def validate_single_cell(request):
         return JsonResponse({'is_valid': True})
     
     try:
-        # 1. Parse primary cell value
-        if value and str(value).replace('.', '', 1).replace('-', '', 1).isdigit():
+        # 1. Parse primary cell value (the 'x')
+        if value is not None and str(value).replace('.', '', 1).replace('-', '', 1).isdigit():
             val = float(value)
         else:
-            val = str(value) if value is not None else ""
+            val = str(value).strip() if value is not None else ""
             
         allowed_locals = {'x': val, 'index': row_index}
         
-        # 2. INJECT ROW DATA & CRUSH CASE-SENSITIVITY BUG
+        # 2. INJECT ROW DATA (This makes 'Bonus' and 'Total' work!)
         for key, val_str in row_data.items():
             if not key: continue
+            
             clean_key = str(key).replace(" ", "") 
             
-            # Parse numbers safely
-            if val_str and str(val_str).replace('.', '', 1).replace('-', '', 1).isdigit():
+            if val_str is not None and str(val_str).replace('.', '', 1).replace('-', '', 1).isdigit():
                 parsed_val = float(val_str)
             else:
                 parsed_val = str(val_str).strip() if val_str else ""
-                # If a math rule runs on an empty cell, default it to 0
-                if parsed_val == "" and ("<" in matched_rule.condition_expression or ">" in matched_rule.condition_expression):
+                # Default empty to 0 if rule looks like math
+                if parsed_val == "" and any(op in matched_rule.condition_expression for op in ["<", ">", "=="]):
                     parsed_val = 0
-                
-            # Inject EVERY case variation so Python eval() never fails on a mismatch!
-            allowed_locals[clean_key] = parsed_val              # Original (e.g., TOTAL)
-            allowed_locals[clean_key.lower()] = parsed_val      # total
-            allowed_locals[clean_key.upper()] = parsed_val      # TOTAL
-            allowed_locals[clean_key.title()] = parsed_val      # Total
-            allowed_locals[clean_key.capitalize()] = parsed_val # Total
-                
+            
+            # Inject all case variations so 'Bonus', 'bonus', and 'BONUS' all work
+            allowed_locals[clean_key] = parsed_val
+            allowed_locals[clean_key.lower()] = parsed_val
+            allowed_locals[clean_key.upper()] = parsed_val
+            allowed_locals[clean_key.title()] = parsed_val
+
+        # 3. Add the 'FinalGrade' style mapping just in case
+        rule_var_name = str(matched_rule.column_name).replace(" ", "")
+        allowed_locals[rule_var_name] = val
+
         allowed_globals = {
-            '__builtins__': None, 'str': str, 'int': int, 'float': float, 
+            '__builtins__': None, 
+            'str': str, 'int': int, 'float': float, 
             'len': len, 'abs': abs, 'round': round,
+            'isinstance': isinstance, 'type': type # Added for your ID check
         }
         
-        is_valid = bool(eval(matched_rule.condition_expression, allowed_globals, allowed_locals))
+        # Strip any accidental leading/trailing whitespace from the formula
+        condition = matched_rule.condition_expression.strip()
+        
+        is_valid = bool(eval(condition, allowed_globals, allowed_locals))
         error_msg = matched_rule.error_message if not is_valid else ''
         
-    except NameError as ne:
-        # If a column name is completely missing
-        is_valid = False
-        error_msg = f'AI Error: Missing column needed for math -> {str(ne)}'
-    except TypeError as te:
-        # If trying to do math on text
-        is_valid = False
-        error_msg = f'AI Error: Cannot calculate -> {str(te)}'
     except Exception as e:
         is_valid = False
-        error_msg = f'Evaluation error: {str(e)}'
+        error_msg = f'Formula Error: {str(e)}'
     
     return JsonResponse({
         'is_valid': is_valid,
