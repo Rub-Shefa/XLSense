@@ -467,3 +467,92 @@ class TestAccessControl:
         )
         response = admin_client.get(reverse("validation_report", args=[upl.id]))
         assert response.status_code == 200
+
+
+@pytest.mark.django_db
+class TestAuditLogsView:
+    def test_audit_logs_requires_login(self, client):
+        response = client.get(reverse("audit_logs"))
+        assert response.status_code == 302
+
+    def test_audit_logs_requires_admin(self, authenticated_client):
+        response = authenticated_client.get(reverse("audit_logs"))
+        assert response.status_code == 302
+
+    def test_audit_logs_accessible_by_admin(self, admin_client):
+        response = admin_client.get(reverse("audit_logs"))
+        assert response.status_code == 200
+        assert "logs" in response.context
+        assert "action_types" in response.context
+
+    def test_audit_logs_shows_logs(self, admin_client, test_audit_log):
+        response = admin_client.get(reverse("audit_logs"))
+        assert response.status_code == 200
+        assert "logs" in response.context
+
+    def test_audit_logs_filter_by_user(self, admin_client, test_audit_log, db):
+        from django.contrib.auth.models import User
+        user2 = User.objects.create_user(username="otheruser", password="pass123")
+        from automation.models import AuditLog
+        AuditLog.objects.create(user=user2, action_type="Login", details="Logged in")
+        response = admin_client.get(reverse("audit_logs") + "?user=testuser")
+        assert response.status_code == 200
+        assert all(
+            log.user.username == "testuser" for log in response.context["logs"]
+        )
+
+    def test_audit_logs_filter_by_action_type(self, admin_client, test_audit_log, db):
+        from automation.models import AuditLog
+        AuditLog.objects.create(
+            user=test_audit_log.user,
+            action_type="Login",
+            details="User logged in",
+        )
+        response = admin_client.get(
+            reverse("audit_logs") + "?action_type=Login"
+        )
+        assert response.status_code == 200
+        assert all(
+            log.action_type == "Login" for log in response.context["logs"]
+        )
+
+    def test_audit_logs_search(self, admin_client, test_audit_log):
+        response = admin_client.get(
+            reverse("audit_logs") + "?search=successfully"
+        )
+        assert response.status_code == 200
+        assert len(response.context["logs"]) > 0
+
+    def test_audit_logs_pagination(self, admin_client, test_admin, db):
+        from django.contrib.auth.models import User
+        user = User.objects.get(username="admin")
+        from automation.models import AuditLog
+        for i in range(25):
+            AuditLog.objects.create(
+                user=user,
+                action_type="Test Action",
+                details=f"Test log entry {i}",
+            )
+        response = admin_client.get(reverse("audit_logs"))
+        assert response.status_code == 200
+        assert len(response.context["logs"]) == 20
+        assert response.context["logs"].has_other_pages
+
+    def test_audit_logs_pagination_page2(self, admin_client, test_admin, db):
+        from django.contrib.auth.models import User
+        user = User.objects.get(username="admin")
+        from automation.models import AuditLog
+        for i in range(25):
+            AuditLog.objects.create(
+                user=user,
+                action_type="Test Action",
+                details=f"Test log entry {i}",
+            )
+        response = admin_client.get(reverse("audit_logs") + "?page=2")
+        assert response.status_code == 200
+        assert len(response.context["logs"]) == 5
+
+    def test_audit_logs_empty_state(self, admin_client, db):
+        response = admin_client.get(reverse("audit_logs"))
+        assert response.status_code == 200
+        assert len(response.context["logs"]) == 0
