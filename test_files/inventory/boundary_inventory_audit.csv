@@ -1,0 +1,5 @@
+ItemName,SKU,Category,Quantity,UnitPrice,ReorderLevel,TotalValue,ReorderFlag
+Boundary 1,A,A,0,1.0,0,0,Yes
+Boundary 2,B,B,10,100.0,10,1000,Yes
+Boundary 3,C,C,5,0.01,0,0,Yes
+Boundary 4,D,D,100,5000.0,50,500000,No

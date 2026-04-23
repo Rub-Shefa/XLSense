@@ -15,6 +15,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.http import JsonResponse
+from django.db.models import Q
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
@@ -230,6 +231,79 @@ def dashboard_view(request):
     }
 
     return render(request, "user_dashboard.html", context)
+
+
+@login_required
+def audit_logs_view(request):
+    """Admin-only paginated audit log viewer with filtering and search."""
+    if not is_admin(request.user):
+        return redirect("dashboard")
+
+    # Filter parameters
+    user_filter = request.GET.get("user", "").strip()
+    action_filter = request.GET.get("action_type", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+    search = request.GET.get("search", "").strip()
+    page_num = request.GET.get("page", "1")
+
+    # Base queryset
+    logs = AuditLog.objects.select_related("user").order_by("-action_timestamp")
+
+    # Apply filters
+    if user_filter:
+        logs = logs.filter(user__username__icontains=user_filter)
+    if action_filter:
+        logs = logs.filter(action_type__icontains=action_filter)
+    if date_from:
+        logs = logs.filter(action_timestamp__date__gte=date_from)
+    if date_to:
+        logs = logs.filter(action_timestamp__date__lte=date_to)
+    if search:
+        logs = logs.filter(
+            Q(action_type__icontains=search)
+            | Q(details__icontains=search)
+        )
+
+    # Pagination: 20 records per page
+    from django.core.paginator import Paginator
+    paginator = Paginator(logs, 20)
+    try:
+        page_obj = paginator.get_page(page_num)
+    except (ValueError, TypeError):
+        page_obj = paginator.get_page(1)
+
+    # Distinct action types for filter dropdown
+    action_types = sorted(
+        AuditLog.objects.values_list("action_type", flat=True).distinct()
+    )
+
+    filter_parts = []
+    if user_filter:
+        filter_parts.append(f"user={user_filter}")
+    if action_filter:
+        filter_parts.append(f"action_type={action_filter}")
+    if date_from:
+        filter_parts.append(f"date_from={date_from}")
+    if date_to:
+        filter_parts.append(f"date_to={date_to}")
+    if search:
+        filter_parts.append(f"search={search}")
+    filter_qs = "&".join(filter_parts)
+
+    context = {
+        "logs": page_obj,
+        "action_types": action_types,
+        "filters": {
+            "user": user_filter,
+            "action_type": action_filter,
+            "date_from": date_from,
+            "date_to": date_to,
+            "search": search,
+        },
+        "filter_qs": f"&{filter_qs}" if filter_qs else "",
+    }
+    return render(request, "audit_logs.html", context)
 
 
 @login_required

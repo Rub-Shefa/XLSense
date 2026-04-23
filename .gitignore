@@ -18,7 +18,6 @@ docs/
 AGENTS.md
 
 # Ignore test files and folders
-test_files
 tests/
 pytest.ini
 
@@ -29,10 +28,6 @@ uploads/*
 # ...BUT do not ignore the .gitkeep file. 
 # This ensures the folder is created on your teammates' machines.
 !.gitkeep
-
-# Ignore common Excel/CSV test files in the root or other folders
-*.xlsx
-*.csv
 
 # Worktrees
 .worktrees/

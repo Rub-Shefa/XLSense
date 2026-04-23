@@ -1,0 +1,5 @@
+EmployeeName,Department,BaseSalary,OvertimeHours,TaxRate,GrossSalary,NetSalary
+Boundary 1,IT,1,0,0,0,1
+Boundary 2,IT,100000,80,45,0,0
+Boundary 3,IT,50000,40,22,0,0
+Boundary 4,IT,50000,20,15,0,0

@@ -1,0 +1,4 @@
+ItemName,SKU,Category,Quantity,UnitPrice,ReorderLevel,TotalValue,ReorderFlag
+Err Quantity,A,A,-5,1200,10,0,No
+Err Price,B,B,10,0,15,0,No
+Err Reorder,C,C,3,450,5,0,No

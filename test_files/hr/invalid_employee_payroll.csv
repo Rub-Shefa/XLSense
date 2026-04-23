@@ -1,0 +1,4 @@
+EmployeeName,Department,BaseSalary,OvertimeHours,TaxRate,GrossSalary,NetSalary
+Err Salary Emp,Engineering,-5000,12,15,0,77350
+Err Overtime Emp,Marketing,65000,100,12,0,60720
+Err Net Salary Emp,Sales,90000,20,18,0,-5000

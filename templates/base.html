@@ -179,6 +179,7 @@
             {% if user.is_authenticated %}
                 {% if user.is_staff or user.is_superuser %}
                     <a href="{% url 'dashboard' %}" class="nav-item {% if request.path == '/dashboard/' %}active{% endif %}">Dashboard</a>
+                    <a href="{% url 'audit_logs' %}" class="nav-item {% if request.path == '/audit-logs/' %}active{% endif %}">Audit Logs</a>
                     <a href="{% url 'manage_templates' %}" class="nav-item {% if request.path == '/manage-templates/' %}active{% endif %}">Domain Templates</a>
                     <a href="{% url 'upload_file' %}" class="nav-item {% if request.path == '/upload/' %}active{% endif %}">Upload File</a>
                 {% else %}

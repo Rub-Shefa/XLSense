@@ -1,0 +1,6 @@
+ItemName,SKU,Category,Quantity,UnitPrice,ReorderLevel,TotalValue,ReorderFlag
+Laptop Dell XPS 15,ELEC-001,Electronics,25,1200,10,30000,No
+Office Chair Pro,FURN-012,Furniture,8,350,15,2800,Yes
+A4 Paper Ream,STAT-005,Stationery,200,5,50,1000,No
+Monitor 27-inch,ELEC-008,Electronics,3,450,5,1350,Yes
+Standing Desk,FURN-020,Furniture,12,600,8,7200,No

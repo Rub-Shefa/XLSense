@@ -1,0 +1,4 @@
+Department,Category,Budget,Spent,Remaining,Variance
+Err Budget,A,-1000,42000,0,8000
+Err Spent,B,80000,-500,0,85000
+Err Variance,C,50000,40000,0,-2000

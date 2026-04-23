@@ -1,0 +1,381 @@
+{% extends 'base.html' %}
+
+{% block title %}Audit Logs | XLSense{% endblock %}
+
+{% block content %}
+<div class="audit-logs-wrapper">
+    <div class="audit-logs-header">
+        <div class="header-left">
+            <h1>Audit Logs</h1>
+            <p class="stats-mini">{{ logs.paginator.count }} total records</p>
+        </div>
+    </div>
+
+    <form method="get" class="filter-bar" id="filterForm">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="searchInput">Search</label>
+                <input
+                    type="text"
+                    name="search"
+                    id="searchInput"
+                    value="{{ filters.search }}"
+                    placeholder="Search actions or details..."
+                    class="filter-input"
+                >
+            </div>
+            <div class="filter-group">
+                <label for="userInput">User</label>
+                <input
+                    type="text"
+                    name="user"
+                    id="userInput"
+                    value="{{ filters.user }}"
+                    placeholder="Username"
+                    class="filter-input"
+                >
+            </div>
+            <div class="filter-group">
+                <label for="actionSelect">Action Type</label>
+                <select name="action_type" id="actionSelect" class="filter-input">
+                    <option value="">All Actions</option>
+                    {% for at in action_types %}
+                    <option value="{{ at }}" {% if filters.action_type == at %}selected{% endif %}>
+                        {{ at }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="dateFromInput">From Date</label>
+                <input
+                    type="date"
+                    name="date_from"
+                    id="dateFromInput"
+                    value="{{ filters.date_from }}"
+                    class="filter-input"
+                >
+            </div>
+            <div class="filter-group">
+                <label for="dateToInput">To Date</label>
+                <input
+                    type="date"
+                    name="date_to"
+                    id="dateToInput"
+                    value="{{ filters.date_to }}"
+                    class="filter-input"
+                >
+            </div>
+            <div class="filter-actions">
+                <button type="submit" class="btn-filter">Apply Filters</button>
+                <a href="{% url 'audit_logs' %}" class="btn-clear">Clear</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="card audit-logs-card">
+        <table class="table audit-logs-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Entity</th>
+                    <th>Timestamp</th>
+                    <th>Details / Metadata</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="user-cell">
+                        <div class="user-avatar">{{ log.user.username|slice:":1"|upper }}</div>
+                        <span class="user-name">{{ log.user.username }}</span>
+                    </td>
+                    <td>
+                        <span class="badge {% if 'Error' in log.action_type %}badge-danger{% else %}badge-info{% endif %}">
+                            {{ log.action_type }}
+                        </span>
+                    </td>
+                    <td class="entity-cell">
+                        <span class="entity-tag">{{ log.action_type|slice:"4" }}</span>
+                    </td>
+                    <td class="timestamp-cell">
+                        <span class="ts-date">{{ log.action_timestamp|date:"M d, Y" }}</span>
+                        <span class="ts-time">{{ log.action_timestamp|date:"H:i:s" }}</span>
+                    </td>
+                    <td class="details-cell" title="{{ log.details }}">
+                        <span class="details-text">{{ log.details|truncatechars:80 }}</span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">
+                        <div class="empty-content">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+                                <rect x="9" y="3" width="6" height="4" rx="1"/>
+                                <line x1="9" y1="12" x2="15" y2="12"/>
+                                <line x1="9" y1="16" x2="13" y2="16"/>
+                            </svg>
+                            <p>No audit log records found.</p>
+                            <p class="empty-hint">Try adjusting your filters or search terms.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if logs.has_other_pages %}
+        <div class="pagination-wrapper">
+            <div class="pagination-info">
+                Showing
+                {% if logs.has_previous %}
+                    <a href="?page={{ logs.previous_page_number }}{{ filter_qs }}" class="page-link">&laquo; Prev</a>
+                {% endif %}
+                <span class="page-current">Page {{ logs.number }} of {{ logs.paginator.num_pages }}</span>
+                {% if logs.has_next %}
+                    <a href="?page={{ logs.next_page_number }}{{ filter_qs }}" class="page-link">Next &raquo;</a>
+                {% endif %}
+                <span class="page-total">({{ logs.paginator.count }} total)</span>
+            </div>
+            <div class="pagination-pages">
+                {% for num in logs.paginator.page_range %}
+                    {% if num == 1 or num == logs.paginator.num_pages or num == logs.number or num == logs.number|add:"-1" or num == logs.number|add:"1" %}
+                        {% if num == logs.number %}
+                            <span class="page-num active">{{ num }}</span>
+                        {% else %}
+                            <a href="?page={{ num }}{{ filter_qs }}" class="page-num">{{ num }}</a>
+                        {% endif %}
+                    {% elif num == logs.number|add:"-2" or num == logs.number|add:"2" %}
+                        <span class="page-ellipsis">&hellip;</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .audit-logs-wrapper {
+        padding: 0;
+        max-width: 100%;
+    }
+
+    .audit-logs-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .audit-logs-header h1 { font-size: 20px; color: var(--color-text); font-weight: 700; margin: 0; }
+    .stats-mini { color: var(--color-text-muted); font-size: 14px; margin-top: 4px; }
+
+    .filter-bar {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+    }
+
+    .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 140px;
+    }
+
+    .filter-group label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--color-text-muted);
+        font-weight: 600;
+    }
+
+    .filter-input {
+        padding: 8px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font-size: 13px;
+        transition: border-color 0.2s;
+        font-family: inherit;
+    }
+
+    .filter-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+    }
+
+    .filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: 8px;
+    }
+
+    .btn-filter {
+        background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition: all 0.2s;
+    }
+
+    .btn-filter:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+
+    .btn-clear {
+        color: var(--color-text-muted);
+        text-decoration: none;
+        font-size: 13px;
+        padding: 8px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: transparent;
+        transition: all 0.2s;
+        display: inline-block;
+    }
+
+    .btn-clear:hover {
+        background: var(--color-bg);
+        color: var(--color-text);
+    }
+
+    .audit-logs-card {
+        overflow: hidden;
+    }
+
+    .audit-logs-table { width: 100%; border-collapse: collapse; }
+    .audit-logs-table th {
+        background: var(--color-bg);
+        padding: 12px 16px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--color-text-muted);
+        border-bottom: 2px solid var(--color-border);
+        text-align: left;
+        font-weight: 600;
+    }
+    .audit-logs-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--color-border);
+        color: var(--color-text);
+        font-size: 13px;
+        vertical-align: middle;
+    }
+    .audit-logs-table tr:hover td { background: rgba(102, 126, 234, 0.04); }
+    .audit-logs-table tr:last-child td { border-bottom: none; }
+
+    .user-cell { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+    .user-avatar {
+        width: 28px;
+        height: 28px;
+        background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .user-name { font-size: 13px; color: var(--color-text); }
+
+    .entity-cell { color: var(--color-text-muted); }
+    .entity-tag {
+        background: rgba(102, 126, 234, 0.1);
+        color: var(--color-accent);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .timestamp-cell { color: var(--color-text-muted); white-space: nowrap; }
+    .ts-date { display: block; font-size: 12px; }
+    .ts-time { display: block; font-size: 11px; opacity: 0.7; }
+
+    .details-cell { max-width: 300px; }
+    .details-text {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text);
+        font-size: 12px;
+    }
+
+    .badge {
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        display: inline-block;
+    }
+    .badge-info { background: rgba(102, 126, 234, 0.15); color: var(--color-accent); }
+    .badge-danger { background: rgba(231, 76, 60, 0.15); color: #e74c3c; }
+    .badge-success { background: rgba(39, 174, 96, 0.15); color: #27ae60; }
+
+    .empty-state-cell { padding: 80px 20px !important; text-align: center; }
+    .empty-content { color: var(--color-text-muted); }
+    .empty-content svg { margin: 0 auto 15px; opacity: 0.3; color: var(--color-text-muted); }
+    .empty-content p { margin: 0 0 4px; font-size: 15px; font-style: italic; }
+    .empty-hint { font-size: 12px !important; opacity: 0.7; }
+
+    .pagination-wrapper {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 16px;
+        border-top: 1px solid var(--color-border);
+        background: var(--color-bg);
+    }
+
+    .pagination-info { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-muted); }
+    .page-link { color: var(--color-accent); text-decoration: none; font-weight: 600; }
+    .page-link:hover { text-decoration: underline; }
+    .page-current { color: var(--color-text); font-weight: 600; }
+    .page-total { font-size: 12px; }
+
+    .pagination-pages { display: flex; gap: 4px; }
+    .page-num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        font-size: 12px;
+        text-decoration: none;
+        color: var(--color-text);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        transition: all 0.2s;
+    }
+    .page-num:hover:not(.active) { border-color: var(--color-accent); color: var(--color-accent); }
+    .page-num.active { background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end)); color: white; border-color: transparent; font-weight: 700; }
+    .page-ellipsis { display: inline-flex; align-items: center; justify-content: center; width: 30px; color: var(--color-text-muted); }
+</style>
+{% endblock %}

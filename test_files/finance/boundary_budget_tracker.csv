@@ -1,0 +1,5 @@
+Department,Category,Budget,Spent,Remaining,Variance
+Boundary 1,A,1,0,1,1
+Boundary 2,B,100000,110000,-10000,-10000
+Boundary 3,C,50000,25000,25000,25000
+Boundary 4,D,30000,29500,500,500
