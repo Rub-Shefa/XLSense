@@ -11,9 +11,13 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+import os
 
 
 # Quick-start development settings - unsuitable for production
@@ -79,7 +83,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'xlsense_db',
         'USER': 'root',
-        'PASSWORD': '',  
+        "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),  
         'HOST': '127.0.0.1',
         'PORT': '3306',
     }
