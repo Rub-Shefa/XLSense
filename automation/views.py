@@ -216,9 +216,9 @@ def logout_view(request):
 def dashboard_view(request):
 
     if is_admin(request.user):
-        files = UploadedFile.objects.all().order_by("-upload_time")
+        files = UploadedFile.objects.filter(file_status="active").order_by("-upload_time")
     else:
-        files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+        files = UploadedFile.objects.filter(user=request.user, file_status="active").order_by("-upload_time")
 
     processed_count = files.filter(status="Completed").count()
     pending_count = files.filter(status="Pending").count()
@@ -590,11 +590,28 @@ def upload_file_view(request):
 @login_required
 def upload_history_view(request):
     if request.user.is_staff:
-        files = UploadedFile.objects.all().order_by("-upload_time")
+        files = UploadedFile.objects.filter(file_status="active").order_by("-upload_time")
     else:
-        files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+        files = UploadedFile.objects.filter(user=request.user, file_status="active").order_by("-upload_time")
 
     return render(request, "upload_history.html", {"files": files})
+
+
+@login_required
+def trash_view(request):
+    now = timezone.now()
+    UploadedFile.objects.filter(
+        user=request.user,
+        file_status="user_deleted",
+        trash_expires_at__lte=now
+    ).update(file_status="trash_expired")
+
+    files = UploadedFile.objects.filter(
+        user=request.user,
+        file_status="user_deleted"
+    ).order_by("-deleted_at")
+
+    return render(request, "trash.html", {"files": files})
 
 
 @login_required
@@ -602,7 +619,7 @@ def validation_report_view(request, file_id):
     if request.user.is_staff:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
-        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user, file_status="active")
 
     results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
 
@@ -674,11 +691,48 @@ def ai_explain_view(request):
 
 
 @login_required
+@require_POST
+def delete_file_status_view(request, file_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required"}, status=401)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    new_status = data.get("status")
+    if new_status not in ("active", "user_deleted"):
+        return JsonResponse({"error": "Invalid status"}, status=400)
+
+    uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+
+    if new_status == "user_deleted":
+        uploaded_file.file_status = "user_deleted"
+        uploaded_file.deleted_at = timezone.now()
+        uploaded_file.trash_expires_at = timezone.now() + timezone.timedelta(days=30)
+        uploaded_file.deleted_by = request.user
+    else:
+        uploaded_file.file_status = "active"
+        uploaded_file.deleted_at = None
+        uploaded_file.trash_expires_at = None
+        uploaded_file.deleted_by = None
+
+    uploaded_file.save()
+
+    return JsonResponse({
+        "status": uploaded_file.file_status,
+        "deleted_at": str(uploaded_file.deleted_at) if uploaded_file.deleted_at else None,
+        "trash_expires_at": str(uploaded_file.trash_expires_at) if uploaded_file.trash_expires_at else None,
+    }, status=200)
+
+
+@login_required
 def download_excel_view(request, file_id):
     if request.user.is_staff:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
-        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user, file_status="active")
 
     file_path = uploaded_file.file.path.lower()
     style = request.GET.get("style", "")
@@ -884,7 +938,7 @@ def preview_excel_view(request, file_id):
     if request.user.is_staff:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
-        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user, file_status="active")
 
     file_path = uploaded_file.file.path
 
@@ -984,7 +1038,7 @@ def preview_excel_view(request, file_id):
 
 @login_required
 def workbook_list_view(request):
-    all_files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+    all_files = UploadedFile.objects.filter(user=request.user, file_status="active").order_by("-upload_time")
     
     original_files = []
     edited_files = []
