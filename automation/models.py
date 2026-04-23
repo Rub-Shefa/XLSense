@@ -47,8 +47,12 @@ class UploadedFile(models.Model):
     upload_time = models.DateTimeField(auto_now_add=True)
     processed_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=50, default="Pending")
-    column_mappings = models.JSONField(default=dict, blank=True) 
+    column_mappings = models.JSONField(default=dict, blank=True)
     style_data = models.TextField(null=True, blank=True)
+    file_status = models.CharField(max_length=20, default="active")
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    trash_expires_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="deleted_files")
 
     @property
     def short_name(self):
