@@ -1,12 +1,9 @@
-from pyexpat import errors
 import re
 import json
 import os
-import ast
 import pandas as pd
 from io import BytesIO
 import difflib
-import openpyxl
 
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -50,32 +47,45 @@ def workbook_editor_view(request, file_id):
     saved_mappings = getattr(uploaded_file, "column_mappings", {})
 
     try:
-        from openpyxl import load_workbook
-        wb_formula = load_workbook(file_path, data_only=False)
-        ws_formula = wb_formula.active
-        wb_value = load_workbook(file_path, data_only=True)
-        ws_value = wb_value.active
+        # Check file extension to determine how to load
+        file_ext = os.path.splitext(file_path)[1].lower()
+        is_csv = file_ext == ".csv"
 
-        # Extract header (first row)
-        headers = []
-        for cell_f, cell_v in zip(next(ws_formula.iter_rows(min_row=1, max_row=1)), 
-                                   next(ws_value.iter_rows(min_row=1, max_row=1))):
-            headers.append(cell_v.value if cell_v.value is not None else "")
+        if is_csv:
+            # Load CSV with pandas (no formulas in CSV)
+            df = pd.read_csv(file_path, dtype=str)
+            df = df.fillna("")
+            headers = list(df.columns)
+            raw_values = df.values.tolist()
+            raw_formulas = [[None for _ in headers] for _ in raw_values]
+        else:
+            # Load Excel workbook with openpyxl
+            from openpyxl import load_workbook
+            wb_formula = load_workbook(file_path, data_only=False)
+            ws_formula = wb_formula.active
+            wb_value = load_workbook(file_path, data_only=True)
+            ws_value = wb_value.active
 
-        # Data rows (from row 2 onward)
-        raw_values = []
-        raw_formulas = []
-        for row_f, row_v in zip(ws_formula.iter_rows(min_row=2), ws_value.iter_rows(min_row=2)):
-            val_row = []
-            formula_row = []
-            for cell_f, cell_v in zip(row_f, row_v):
-                val_row.append(cell_v.value if cell_v.value is not None else "")
-                if isinstance(cell_f.value, str) and cell_f.value.startswith('='):
-                    formula_row.append(cell_f.value)
-                else:
-                    formula_row.append(None)
-            raw_values.append(val_row)
-            raw_formulas.append(formula_row)
+            # Extract header (first row)
+            headers = []
+            for cell_f, cell_v in zip(next(ws_formula.iter_rows(min_row=1, max_row=1)), 
+                                    next(ws_value.iter_rows(min_row=1, max_row=1))):
+                headers.append(cell_v.value if cell_v.value is not None else "")
+
+            # Data rows (from row 2 onward)
+            raw_values = []
+            raw_formulas = []
+            for row_f, row_v in zip(ws_formula.iter_rows(min_row=2), ws_value.iter_rows(min_row=2)):
+                val_row = []
+                formula_row = []
+                for cell_f, cell_v in zip(row_f, row_v):
+                    val_row.append(cell_v.value if cell_v.value is not None else "")
+                    if isinstance(cell_f.value, str) and cell_f.value.startswith('='):
+                        formula_row.append(cell_f.value)
+                    else:
+                        formula_row.append(None)
+                raw_values.append(val_row)
+                raw_formulas.append(formula_row)
 
         # Create DataFrames with proper column names
         df = pd.DataFrame(raw_values, columns=headers)
