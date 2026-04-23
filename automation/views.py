@@ -364,10 +364,6 @@ def manage_templates_view(request):
 def upload_file_view(request):
     domains = DomainTemplate.objects.all()
 
-    latest_upload = (
-        UploadedFile.objects.filter(user=request.user).order_by("-upload_time").first()
-    )
-
     if request.method == "POST":
         request.session.pop("parsed_files", None)
 
@@ -567,25 +563,45 @@ def upload_file_view(request):
 
         return redirect("upload_file")
 
+    # ---------- GET request ----------
+    # Retrieve stored preview files from session
     parsed_files = request.session.get("parsed_files", None)
 
-    # Hide latest_upload if we have parsed_files to avoid double preview
+    # Validate stored preview files: remove any that are no longer active in DB
     if parsed_files:
-        latest_upload = None
-    elif not latest_upload:
-        request.session.pop("parsed_files", None)
-        parsed_files = None
+        valid_items = []
+        for item in parsed_files:
+            file_id = item.get("id")
+            if file_id:
+                try:
+                    file_obj = UploadedFile.objects.get(id=file_id, user=request.user)
+                    if file_obj.file_status == "active":
+                        valid_items.append(item)
+                except UploadedFile.DoesNotExist:
+                    pass  # skip, file no longer exists
+        if valid_items:
+            parsed_files = valid_items
+            request.session["parsed_files"] = parsed_files
+        else:
+            request.session.pop("parsed_files", None)
+            parsed_files = None
+
+    # Get the most recent active uploaded file (for the "Latest Upload" card)
+    latest_uploads = UploadedFile.objects.filter(
+    user=request.user,
+    file_status="active"
+    ).order_by("-upload_time")[:3]
+    
 
     return render(
         request,
         "upload.html",
         {
-            "latest_upload": latest_upload,
+            "latest_uploads": latest_uploads,
             "domains": domains,
             "parsed_files": parsed_files,
         },
     )
-
 
 @login_required
 def upload_history_view(request):
