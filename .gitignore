@@ -17,10 +17,6 @@ docs/
 
 AGENTS.md
 
-# Ignore test files and folders
-tests/
-pytest.ini
-
 # --- Media and Uploads ---
 # Ignore all files inside the uploads folder...
 uploads/*
