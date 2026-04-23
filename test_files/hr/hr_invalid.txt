@@ -1,0 +1,21 @@
+EmployeeName|Department|BaseSalary|OvertimeHours|TaxRate|GrossSalary|NetSalary
+Neg Salary|Engineering|-5000|12|15|0|77350
+High Overtime|Marketing|65000|200|12|0|60720
+Neg Net|Sales|90000|20|18|0|-5000
+Neg Tax|IT|60000|10|-5|6000|54000
+Text Salary|HR|ABC|5|10|5000|4500
+Text OT|Finance|70000|Many|14|7000|60200
+Text Tax|Legal|80000|10|High|9000|70000
+Neg OT|Operations|50000|-10|10|5000|45000
+High Tax|Admin|50000|5|60|5000|30000
+Missing Salary|IT|None|10|10|5000|45000
+Missing OT|Sales|60000|None|12|6000|52800
+Missing Tax|Marketing|55000|5|None|5500|49500
+Miss Gross|HR|60000|8|12|None|52800
+Miss Net|Finance|70000|10|14|7000|None
+Gross Mismatch|Legal|80000|10|15|1|68000
+Net Mismatch|Operations|50000|5|10|5000|1
+Very Neg Salary|Admin|-99999|0|0|0|0
+Very High OT|Sales|50000|500|20|25000|25000
+Zero Tax|IT|100000|0|0|0|100000
+Empty All|Temp|None|None|None|None|None

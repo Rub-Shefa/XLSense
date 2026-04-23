@@ -1,0 +1,21 @@
+EmployeeName|Department|BaseSalary|OvertimeHours|TaxRate|GrossSalary|NetSalary
+Zero Salary|IT|0|0|0|0|0
+Zero OT|Sales|60000|0|15|6000|51000
+Zero Tax|Ops|50000|10|0|5500|55000
+Min Salary|Intern|1|0|0|1|1
+Max Salary|CEO|999999|100|50|50000|549500
+Exact OT|Eng|80000|40|20|8000|68800
+Max OT|Sales|50000|100|25|10000|57500
+One Salary|Part|1|1|1|101|100
+One OT|Temp|100000|1|20|100100|80080
+One Tax|Intern|100000|0|1|0|99000
+Low Tax|Junior|30000|5|1|3500|29950
+High Tax|Senior|100000|0|50|0|50000
+Near Max OT|Sales|50000|99|20|9900|49900
+Balanced|Mid|50000|10|10|5500|44000
+Mid Range|Med|55000|15|12|6500|51700
+At Limit|Limit|99999|40|20|49990|39992
+Tiny OT|Min|100000|0.5|20|5000|40000
+Precise|Fine|50000.5|5.5|10.5|5555.5|44949.95
+All Zero|None|0|0|0|0|0
+Exact Tax|Tax|100000|0|25|0|75000

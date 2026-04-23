@@ -1,0 +1,21 @@
+EmployeeName,Department,BaseSalary,OvertimeHours,TaxRate,GrossSalary,NetSalary
+Kamal Hossain,Engineering,85000,12,15,9100,77350
+Nusrat Jahan,Marketing,65000,8,12,6900,60720
+Tanvir Rahman,Engineering,90000,20,18,10000,82000
+Sarah Khan,HR,55000,0,10,5500,49500
+Rafiul Islam,Finance,72000,15,14,7950,68370
+Ali Ahmed,IT,70000,10,13,7500,60750
+Fatima Begum,Sales,60000,5,11,6000,53400
+Jahid Hasan,Operations,58000,8,10,6400,51200
+Lisa Pervez,Legal,75000,12,15,8400,63900
+Omar Faruk,Admin,50000,0,9,5000,41000
+Mona Aktar,Support,45000,5,8,5000,37000
+Tareq Mia,Product,68000,10,13,7800,58600
+Zara Iqbal,Quality,62000,8,12,6800,54080
+Imran Khan,Security,55000,6,10,6000,47000
+Sonya Ferdows,Training,48000,4,9,4800,39000
+Rana Das,Logistics,52000,7,10,5700,45100
+Nila Chowdhury,Compliance,70000,9,14,7700,60100
+Mahfuz Alam,Procurement,58000,6,11,6400,50400
+Rita Dey,Analytics,65000,10,12,7000,55800
+Jahid Islam,R&D,80000,15,16,9000,68000
