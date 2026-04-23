@@ -666,28 +666,53 @@ def ai_explain_view(request):
     if not result_id:
         return JsonResponse({"error": "result_id is required"}, status=400)
 
-    result = get_object_or_404(ValidationResult, id=result_id)
-    template = result.file.template
+    # 1. Check if the ID is positive (saved in DB) or negative (live typing)
+    try:
+        is_real_db_id = int(result_id) > 0
+    except ValueError:
+        is_real_db_id = False
 
-    formula = FormulaRule.objects.filter(
-        template=template,
-        target_column__iexact=result.column_name,
-    ).first()
+    if is_real_db_id:
+        result = get_object_or_404(ValidationResult, id=result_id)
+        template = result.file.template
 
-    if formula:
-        explanation, ai_success = generate_ai_explanation(
-            formula_name=formula.formula_name,
-            target_column=formula.target_column,
-            condition_expression=formula.condition_expression,
-        )
+        formula = FormulaRule.objects.filter(
+            template=template,
+            target_column__iexact=result.column_name,
+        ).first()
+
+        if formula:
+            explanation, ai_success = generate_ai_explanation(
+                formula_name=formula.formula_name,
+                target_column=formula.target_column,
+                condition_expression=formula.condition_expression,
+            )
+        else:
+            explanation, ai_success = generate_ai_explanation(
+                formula_name="Validation Rule",
+                target_column=result.column_name,
+                condition_expression=result.error_details,
+            )
+        return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
+
     else:
-        explanation, ai_success = generate_ai_explanation(
-            formula_name="Validation Rule",
-            target_column=result.column_name,
-            condition_expression=result.error_details,
+        cell_value = data.get("cell_value", "Empty")
+        column_name = data.get("column_name", "Unknown")
+        rule_error = data.get("rule_error", "Invalid value")
+
+        enhanced_context = (
+            f"The user typed '{cell_value}' into '{column_name}'. "
+            f"Rule violated: {rule_error}. "
+            f"Explain to the user directly why this is wrong and what they should do. "
+            f"Keep it to 2 short, conversational sentences. Do not use bullet points, and do not start your response with 'Explanation:' or 'The error occurs'."
         )
 
-    return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
+        explanation, ai_success = generate_ai_explanation(
+            formula_name="Live Validation",
+            target_column=column_name,
+            condition_expression=enhanced_context,
+        )
+        return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
 
 
 @login_required

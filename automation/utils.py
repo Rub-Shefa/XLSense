@@ -88,6 +88,7 @@ def find_best_column(rule_name, excel_columns):
 
 
 def validate_excel_data(uploaded_file_obj):
+    import pandas as pd
     from .models import ValidationRule, FormulaRule, ValidationResult
 
     file_path = uploaded_file_obj.file.path
@@ -103,22 +104,62 @@ def validate_excel_data(uploaded_file_obj):
     formula_rules = FormulaRule.objects.filter(template=template)
     ValidationResult.objects.filter(file=uploaded_file_obj).delete()
 
-
     print(f"Validating file: {uploaded_file_obj.file.name}")
     print(f"DataFrame columns: {list(df.columns)}")
     print(f"Number of validation rules: {rules.count()}")
     print(f"Number of formula rules: {formula_rules.count()}")
 
     for index, row in df.iterrows():
-        # --- LOGIC VALIDATION ---
+        # Keep track of which columns already failed so we don't double-report!
+        failed_columns_for_row = set()
+
+        # =========================================================
+        # 1. BUILD ROBUST ROW CONTEXT (REFINED)
+        # =========================================================
+        row_context = {}
+        # Get the mappings the user saved in the UI
+        saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
+
+        for key, val_str in row.items():
+            if pd.isna(key) or str(key).strip() == "": 
+                continue
+            
+            # Clean the value
+            if pd.isna(val_str) or val_str == "":
+                parsed_val = 0 # Default to 0 for math safety
+            else:
+                raw_str = str(val_str).strip()
+                try:
+                    parsed_val = float(raw_str)
+                except:
+                    parsed_val = raw_str
+
+            # A. Add the original name (and variants) to context
+            clean_key = str(key).replace(" ", "")
+            row_context[clean_key] = parsed_val
+            row_context[clean_key.title()] = parsed_val
+            
+            # B. CRITICAL: Add the MAPPED name to context
+            # If the file has '10sqrtx' and it's mapped to 'Bonus', 
+            # this adds 'Bonus' to the context so eval() can find it!
+            if key in saved_mappings:
+                db_name = saved_mappings[key]
+                row_context[db_name] = parsed_val
+        
+        # DEBUG PRINT: Run this once and check your terminal 
+        # to see if 'Bonus' is actually in this list!
+        # print(f"Row Context Keys: {row_context.keys()}")
+
+        # =========================================================
+        # 2. LOGIC VALIDATION
+        # =========================================================
         for rule in rules:
             actual_col = find_best_column(rule.column_name, df.columns)
             if actual_col:
-                print(f"Rule '{rule.rule_name}' matched to column '{actual_col}'")
                 raw_val = row[actual_col]
 
                 if pd.isna(raw_val) or raw_val == "":
-                    val = 0
+                    val = 0 if ("<" in rule.condition_expression or ">" in rule.condition_expression) else ""
                 else:
                     try:
                         if "date" in str(actual_col).lower():
@@ -126,18 +167,16 @@ def validate_excel_data(uploaded_file_obj):
                         else:
                             val = float(raw_val)
                     except:
-                        val = str(raw_val)
+                        val = str(raw_val).strip()
 
                 try:
                     allowed_locals = {"x": val, "index": index}
+                    allowed_locals.update(row_context)
+
                     allowed_globals = {
                         "__builtins__": None,
-                        "str": str,
-                        "int": int,
-                        "float": float,
-                        "len": len,
-                        "abs": abs,
-                        "round": round,
+                        "str": str, "int": int, "float": float,
+                        "len": len, "abs": abs, "round": round,
                     }
 
                     if not eval(rule.condition_expression, allowed_globals, allowed_locals):
@@ -148,46 +187,50 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=rule.error_message,
                             is_valid=False,
                         )
+                        # Mark this column as failed so the Formula Audit ignores it!
+                        failed_columns_for_row.add(actual_col)
                         print(f"  -> Validation failed for row {index+1}, column {actual_col}")
                 except Exception as e:
-                    print(f"  -> Error evaluating rule: {e}")
+                    print(f"  -> Logic Error evaluating rule '{rule.rule_name}' on col '{actual_col}': {e}")
                     continue
-            else:
-                print(f"Rule '{rule.rule_name}' could not match any column")
 
-        # --- FORMULA AUDIT ---
-        row_context = {
-            str(k).replace(" ", ""): (0 if pd.isna(v) or v == "" else v)
-            for k, v in row.items()
-        }
-
+        # =========================================================
+        # 3. FORMULA AUDIT
+        # =========================================================
         for f_rule in formula_rules:
             actual_target_col = find_best_column(f_rule.target_column, df.columns)
-            if actual_target_col:
+            
+            # Skip this formula check if a Logic Validation rule already failed for this exact cell
+            if actual_target_col and actual_target_col not in failed_columns_for_row:
                 try:
                     excel_val = row[actual_target_col]
+                    
+                    safe_formula_context = {k: (0 if v == "" else v) for k, v in row_context.items()}
+                    
                     expected_val = eval(
-                        f_rule.condition_expression, {"__builtins__": None}, row_context
+                        f_rule.condition_expression, {"__builtins__": None}, safe_formula_context
                     )
-                    if str(excel_val).strip() != str(expected_val).strip():
+                    
+                    # Clean up the display values so it says "Empty" instead of "nan"
+                    display_excel_val = "Empty" if pd.isna(excel_val) or str(excel_val).strip() == "" else str(excel_val).strip()
+                    display_expected_val = str(expected_val).strip()
+
+                    if display_excel_val != display_expected_val:
                         ValidationResult.objects.create(
                             file=uploaded_file_obj,
                             row_index=index + 1,
                             column_name=actual_target_col,
-                            error_details=f"Math Error: Expected {expected_val}, found {excel_val}.",
+                            error_details=f"Math Error: Expected {display_expected_val}, found {display_excel_val}.",
                             is_valid=False,
                         )
                         print(f"  -> Formula mismatch for row {index+1}, column {actual_target_col}")
                 except Exception as e:
-                    print(f"  -> Error in formula audit: {e}")
+                    print(f"  -> Error in formula audit for '{f_rule.target_column}': {e}")
                     continue
-
-    error_count = ValidationResult.objects.filter(file=uploaded_file_obj, is_valid=False).count()
-    print(f"Total validation errors for this file: {error_count}")
-    return True
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     from .models import FormulaRule, ValidationRule
+    from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, find_best_column
     import pandas as pd
 
     template = uploaded_file_obj.template
@@ -201,50 +244,43 @@ def get_formula_recommendations(uploaded_file_obj, df_columns):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
+    
     df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
     df = preprocess_dataframe(df)
     df = remove_empty_unnamed_columns(df)
 
     actual_columns = list(df.columns)
-    file_columns = actual_columns
 
-    # AI matching
-    ai_mapping = {}
-    if file_columns and all_domain_cols:
-        ai_mapping = ai_match_columns(file_columns, list(all_domain_cols))
+    saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
+    
     reverse_map = {}
-    for file_col, db_col in ai_mapping.items():
-        reverse_map[db_col] = file_col
+    
+    if saved_mappings:
+        for file_col, db_col in saved_mappings.items():
+            reverse_map[db_col] = file_col
+    else:
+        if actual_columns and all_domain_cols:
+            ai_mapping = ai_match_columns(actual_columns, list(all_domain_cols))
+            for file_col, db_col in ai_mapping.items():
+                reverse_map[db_col] = file_col
 
     recommendations = []
     for domain_col in all_domain_cols:
-        # Check if column exists (via AI or fuzzy)
+        # Check if column exists (via user mapping, AI mapping, or fuzzy text match)
         actual_col = reverse_map.get(domain_col) or find_best_column(domain_col, actual_columns)
         exists = actual_col is not None
 
         if not exists:
-            # Column missing entirely
             formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
             if formula_rule:
                 formula = formula_rule.condition_expression
                 message = f"Suggested: Create '{domain_col}' column. Use the formula below to calculate it."
             else:
-                formula = ""
+                formula = "None (Manual Data Entry)" 
                 message = f"Suggested: Create '{domain_col}' column (required for validation)."
+            
             recommendations.append({"column": domain_col, "formula": formula, "message": message})
-        else:
-            # Column exists – check if it's completely empty (or only dashes)
-            col_data = df[actual_col].astype(str).str.strip()
-            is_empty = col_data.isin(['', '-', 'nan', 'None']).all()
-            if is_empty:
-                formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
-                if formula_rule:
-                    formula = formula_rule.condition_expression
-                    message = f"Suggested: Column '{domain_col}' exists but is empty. Use the formula below to populate it."
-                else:
-                    formula = ""
-                    message = f"Suggested: Column '{domain_col}' exists but is empty. Please fill it."
-                recommendations.append({"column": domain_col, "formula": formula, "message": message})
+            
     return recommendations
 
 def calculate_quality_score(uploaded_file_obj, total_rows):

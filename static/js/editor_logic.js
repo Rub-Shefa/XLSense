@@ -35,8 +35,19 @@ function captureState() {
         document.querySelectorAll('#tableBody tr').forEach(tr => {
             const rowData = [];
             tr.querySelectorAll('td.editable-cell').forEach(td => {
+                
+                // 🛠️ THE FIX: Only get the raw text, ignore the Explain button!
+                let rawText = '';
+                if (td) {
+                    rawText = Array.from(td.childNodes)
+                        .filter(node => node.nodeType === Node.TEXT_NODE)
+                        .map(node => node.textContent)
+                        .join('')
+                        .trim();
+                }
+
                 rowData.push({
-                    text: td ? td.innerText : '',
+                    text: rawText,
                     style: td ? td.style.cssText : '',
                     formula: (td && cellFormulas.has(td)) ? cellFormulas.get(td) : '',
                     hasError: td ? td.classList.contains('validation-error') : false,
@@ -47,11 +58,7 @@ function captureState() {
             rows.push(rowData);
         });
 
-        // Only push if we have actual data
-        if (headers.length === 0 || rows.length === 0) {
-            console.warn('Skipping captureState: empty table');
-            return;
-        }
+        if (headers.length === 0 || rows.length === 0) return;
 
         const currentState = { headers: headers, rows: rows };
         const currentStateJson = JSON.stringify(currentState);
@@ -68,10 +75,7 @@ function captureState() {
 }
 
 function restoreState(state) {
-    if (!state || !state.headers || !state.rows || state.rows.length === 0) {
-        console.warn('Invalid state, skipping restore');
-        return;
-    }
+    if (!state || !state.headers || !state.rows || state.rows.length === 0) return;
     isRestoring = true;
 
     try {
@@ -108,43 +112,96 @@ function restoreState(state) {
 
             const newCells = tr.querySelectorAll('td.editable-cell');
             row.forEach((cellData, ci) => {
-                if (cellData.formula && newCells[ci]) {
-                    cellFormulas.set(newCells[ci], cellData.formula);
-                }
-                // Restore validation error
+                if (cellData.formula && newCells[ci]) cellFormulas.set(newCells[ci], cellData.formula);
+                
                 if (cellData.hasError && newCells[ci]) {
                     newCells[ci].classList.add('validation-error');
                     if (cellData.errorMsg) newCells[ci].setAttribute('data-error', cellData.errorMsg);
                     if (cellData.errorId) newCells[ci].setAttribute('data-error-id', cellData.errorId);
+                    
                     if (!newCells[ci].querySelector('.error-explain-btn')) {
                         const explainBtn = document.createElement('button');
-                        explainBtn.textContent = 'Explain';
+                        explainBtn.innerHTML = '✨ AI Explain'; 
                         explainBtn.className = 'error-explain-btn';
                         explainBtn.style.display = 'none';
                         explainBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            fetch('/ai-explain/', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
-                                body: JSON.stringify({ result_id: cellData.errorId })
-                            })
-                            .then(res => res.json())
-                            .then(data => {
-                                const panel = document.createElement('div');
-                                panel.className = 'floating-explanation-panel';
-                                panel.innerHTML = `
-                                    <div class="ai-explanation-box">
-                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
-                                        <div class="ai-content">${data.explanation}</div>
-                                    </div>
-                                    <button class="close-explanation">×</button>
-                                `;
-                                document.body.appendChild(panel);
-                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
-                                setTimeout(() => panel.remove(), 8000);
-                            })
-                            .catch(err => console.error(err));
-                        };
+    e.stopPropagation();
+
+    // 1. Immediately create and show the panel with the loading state
+    const panel = document.createElement('div');
+    panel.className = 'floating-explanation-panel'; 
+    
+    // We set up the HTML structure just like your report page
+    panel.innerHTML = `
+        <div class="ai-explanation-box">
+            <div class="ai-loading" style="display: flex; align-items: center; gap: 8px; padding: 10px;">
+                <span class="spinner" style="width: 16px; height: 16px; border: 2px solid transparent; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;"></span> 
+                <span class="font-medium">Generating explanation...</span>
+            </div>
+            
+            <div class="ai-content-wrapper" style="display: none; padding: 10px;">
+                <div class="ai-insight-header" style="font-weight: bold; margin-bottom: 8px;"></div>
+                <div class="ai-content" style="white-space: pre-wrap; line-height: 1.5;"></div>
+            </div>
+        </div>
+        <button class="close-explanation" style="position: absolute; top: 8px; right: 8px; cursor: pointer; border: none; background: none; font-size: 16px;">×</button>
+    `;
+
+    // Remove any existing panels so they don't stack up on the screen
+    const existingPanel = document.querySelector('.floating-explanation-panel');
+    if (existingPanel) existingPanel.remove();
+
+    document.body.appendChild(panel);
+    
+    // Setup close button
+    panel.querySelector('.close-explanation').onclick = () => panel.remove();
+
+    // 2. Prepare the payload
+    const payload = { 
+        result_id: cellData.errorId,
+        column_name: colName,           
+        cell_value: cellData.text,      
+        rule_error: cellData.errorMsg   
+    };
+
+    // 3. Fetch the data from the backend
+    fetch('/ai-explain/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        // Hide the loading spinner
+        panel.querySelector('.ai-loading').style.display = 'none';
+        
+        // Show the content wrapper
+        panel.querySelector('.ai-content-wrapper').style.display = 'block';
+        
+        // Set the dynamic header based on whether AI was used
+        const header = panel.querySelector('.ai-insight-header');
+        if (data.ai_used) {
+            header.innerHTML = '✨ Intelligent Auditor Analysis';
+        } else {
+            header.innerHTML = '📋 Rule-Based Fallback'; // You can change this text to whatever you like
+        }
+        
+        // Format the line breaks properly and inject the text
+        const formattedExplanation = data.explanation.replace(/\n/g, '<br>');
+        panel.querySelector('.ai-content').innerHTML = formattedExplanation;
+
+        // Auto-close after 10 seconds so it doesn't stay on screen forever
+        setTimeout(() => { if (document.body.contains(panel)) panel.remove(); }, 10000);
+    })
+    .catch(err => {
+        console.error(err);
+        // If it fails, show an error state instead of spinning forever
+        panel.querySelector('.ai-loading').style.display = 'none';
+        panel.querySelector('.ai-content-wrapper').style.display = 'block';
+        panel.querySelector('.ai-insight-header').innerHTML = '⚠️ Connection Error';
+        panel.querySelector('.ai-content').innerHTML = "Could not connect to the AI service.";
+    });
+};
                         newCells[ci].appendChild(explainBtn);
                         newCells[ci].addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
                         newCells[ci].addEventListener('mouseleave', () => explainBtn.style.display = 'none');
@@ -155,15 +212,31 @@ function restoreState(state) {
 
         attachCellEvents();
         updateStatusBar();
-        renumberRows();
+        if(typeof renumberRows === 'function') renumberRows();
         lastStateJson = JSON.stringify(state);
         activeCell = null;
-        clearSelection();
+        if(typeof clearSelection === 'function') clearSelection();
     } catch (e) {
         console.error("Error during restoreState:", e);
     } finally {
         setTimeout(() => { isRestoring = false; }, 10);
     }
+}
+
+// 🛠️ THE FIX: Reusable function so your CSS stays perfect everywhere
+function showExplanationPanel(message) {
+    const panel = document.createElement('div');
+    panel.className = 'floating-explanation-panel';
+    panel.innerHTML = `
+        <div class="ai-explanation-box">
+            <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+            <div class="ai-content">${message}</div>
+        </div>
+        <button class="close-explanation">×</button>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector('.close-explanation').onclick = () => panel.remove();
+    setTimeout(() => panel.remove(), 8000);
 }
 
 function undo() {
@@ -799,7 +872,7 @@ const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-hea
 const rowCells = Array.from(cell.parentElement.querySelectorAll('td.editable-cell'));
 const rowData = {};
 headers.forEach((th, idx) => {
-    const colName = th.querySelector('.header-label')?.innerText.trim();
+    const colName = th.querySelector('.header-label')?.textContent.trim();
     if (colName && rowCells[idx]) {
         rowData[colName] = rowCells[idx].innerText.trim();
     }
@@ -813,7 +886,8 @@ headers.forEach((th, idx) => {
                     file_id: window.DJANGO_VARS.fileId,
                     column: columnName,
                     value: currentValue,
-                    row: cell.parentElement.rowIndex
+                    row: cell.parentElement.rowIndex,
+                    rowData: rowData
                 })
             })
             .then(res => res.json())
@@ -826,27 +900,56 @@ headers.forEach((th, idx) => {
                         cell.setAttribute('data-error-id', tempId);
                         if (!cell.querySelector('.error-explain-btn')) {
                             const explainBtn = document.createElement('button');
-                            explainBtn.textContent = 'Explain';
+                            explainBtn.innerHTML = '✨ AI Explain';
                             explainBtn.className = 'error-explain-btn';
                             explainBtn.style.display = 'none';
+                            explainBtn.contentEditable = "false";
+                            explainBtn.setAttribute('contenteditable', 'false');
+                            explainBtn.style.userSelect = "none";
                             explainBtn.onclick = (e) => {
                                 e.stopPropagation();
-                                const panel = document.createElement('div');
-                                panel.className = 'floating-explanation-panel';
-                                panel.innerHTML = `
-                                    <div class="ai-explanation-box">
-                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
-                                        <div class="ai-content">${data.error_message}</div>
-                                    </div>
-                                    <button class="close-explanation">×</button>
-                                `;
-                                document.body.appendChild(panel);
-                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
-                                setTimeout(() => panel.remove(), 8000);
-                            };
-                            cell.appendChild(explainBtn);
-                            cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
-                            cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
+                                const payload = { 
+            result_id: tempId, // Sends the temporary negative ID
+            column_name: columnName, 
+            cell_value: currentValue, 
+            rule_error: data.error_message 
+        };
+
+        fetch('/ai-explain/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(aiData => {
+            // Use the reusable panel function we created earlier
+            if (typeof showExplanationPanel === 'function') {
+                showExplanationPanel(aiData.explanation);
+            } else {
+                // Fallback just in case
+                const panel = document.createElement('div');
+                panel.className = 'floating-explanation-panel';
+                panel.innerHTML = `
+                    <div class="ai-explanation-box">
+                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                        <div class="ai-content">${aiData.explanation}</div>
+                    </div>
+                    <button class="close-explanation">×</button>
+                `;
+                document.body.appendChild(panel);
+                panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                setTimeout(() => panel.remove(), 8000);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            if (typeof showExplanationPanel === 'function') showExplanationPanel("Error connecting to AI.");
+        });
+    };
+    
+    cell.appendChild(explainBtn);
+    cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
+    cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
                         }
                     }
                 } else {
