@@ -1,0 +1,21 @@
+Department,Category,Budget,Spent,Remaining,Variance
+Zero Budget,A,0.0,0.0,0.0,0.0
+Zero Spent,B,50000.0,0.0,50000.0,50000.0
+Full Spend,C,50000.0,50000.0,0.0,0.0
+Exact Zero,D,1.0,1.0,0.0,0.0
+Max Budget,E,999999999.0,100.0,999999899.0,999999899.0
+Overspend,F,100.0,200.0,-100.0,-100.0
+Precise,G,25000.5,18000.25,7025.25,7025.25
+One Budget,H,1.0,0.0,1.0,1.0
+One Spent,I,100.0,1.0,99.0,99.0
+Near Full,J,100.0,99.0,1.0,1.0
+Tiny Budget,K,0.01,0.0,0.01,0.01
+Tiny Spent,L,1.0,0.01,0.99,0.99
+Very Precise,M,123456.789,12345.678,111111.111,111111.111
+Neg Boundary,N,0.0,1.0,-1.0,-1.0
+At Limit,O,999999.0,999999.0,0.0,0.0
+Over One,P,1.0,2.0,-1.0,-1.0
+High Prec,Q,999999.99,999999.98,0.01,0.01
+Balanced,R,50000.0,25000.0,25000.0,25000.0
+Exact Match,S,10000.0,5000.0,5000.0,5000.0
+Zero Var,T,100.0,100.0,0.0,0.0

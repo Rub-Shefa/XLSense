@@ -1,0 +1,21 @@
+Department|Category|Budget|Spent|Remaining|Variance
+Zero Budget|A|0|0|0|0
+Zero Spent|B|50000|0|50000|50000
+Full Spend|C|50000|50000|0|0
+Exact Zero|D|1|1|0|0
+Max Budget|E|999999999|100|999999899|999999899
+Overspend|F|100|200|-100|-100
+Precise|G|25000.5|18000.25|7025.25|7025.25
+One Budget|H|1|0|1|1
+One Spent|I|100|1|99|99
+Near Full|J|100|99|1|1
+Tiny Budget|K|0.01|0|0.01|0.01
+Tiny Spent|L|1|0.01|0.99|0.99
+Very Precise|M|123456.789|12345.678|111111.111|111111.111
+Neg Boundary|N|0|1|-1|-1
+At Limit|O|999999|999999|0|0
+Over One|P|1|2|-1|-1
+High Prec|Q|999999.99|999999.98|0.01|0.01
+Balanced|R|50000|25000|25000|25000
+Exact Match|S|10000|5000|5000|5000
+Zero Var|T|100|100|0|0

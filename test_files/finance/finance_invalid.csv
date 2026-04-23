@@ -1,0 +1,20 @@
+Department,Category,Budget,Spent,Remaining,Variance
+Neg Budget,A,-1000,42000,0,8000
+Neg Spent,B,80000,-500,0,85000
+Neg Variance,C,50000,40000,0,-2000
+Over Spent,D,30000,50000,0,20000
+Text Budget,E,ABC,10000,0,10000
+Text Spent,F,50000,Over,0,50000
+Text Variance,G,20000,15000,0,High
+Neg Remaining,H,10000,20000,-10000,-10000
+Missing Budget,I,,10000,0,10000
+Missing Spent,J,20000,,0,20000
+Missing Variance,K,30000,25000,0,
+Rem Mismatch,L,50000,30000,1000,1000
+Var Mismatch,M,40000,35000,5000,0
+Very Neg Budget,N,-99999,1000,0,1000
+Very Neg Spent,O,100000,-50000,0,150000
+Text Remaining,P,25000,15000,Zero,10000
+Over Full,Q,100,150,-50,-50
+Neg All,R,-1000,-500,-500,-500
+Empty All,S,,,,
