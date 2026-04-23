@@ -1,0 +1,21 @@
+ItemName|SKU|Category|Quantity|UnitPrice|ReorderLevel|TotalValue|ReorderFlag
+Zero Qty|TEST-001|Test|0|100|5|0|Yes
+Zero Price|TEST-002|Test|10|0|5|0|No
+Exact Reorder|TEST-003|Test|10|50|10|500|No
+At Reorder Pt|TEST-004|Test|5|100|5|500|Yes
+Min Qty|TEST-005|Test|1|1|1|1|Yes
+Max Qty|TEST-006|Test|999999|1000|500000|999999000|Yes
+Precise Price|TEST-007|Test|7|14.99|3|104.93|No
+Zero Reorder|TEST-008|Test|20|25|0|500|No
+At Zero Qty|TEST-009|Test|5|20|10|100|Yes
+One Qty|TEST-010|Test|1|50|1|50|Yes
+One Price|TEST-011|Test|100|1|50|100|No
+Near Reorder|TEST-012|Test|6|50|5|300|No
+Just Over|TEST-013|Test|6|50|5|300|Yes
+Just Under|TEST-014|Test|4|50|5|200|Yes
+Zero Total|TEST-015|Test|0|0|0|0|No
+High Value|TEST-016|Test|1000|1000|500|1000000|Yes
+Balanced|TEST-017|Test|50|20|25|1000|Yes
+Mid Range|TEST-018|Test|100|10|50|1000|Yes
+Exact Total|TEST-019|Test|10|10|5|100|No
+One All|TEST-020|Test|1|1|1|1|Yes

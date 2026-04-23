@@ -1,0 +1,21 @@
+ItemName,SKU,Category,Quantity,UnitPrice,ReorderLevel,TotalValue,ReorderFlag
+Laptop Dell XPS,ELEC-001,Electronics,25,1200,10,30000,No
+Office Chair Pro,FURN-012,Furniture,8,350,15,2800,Yes
+A4 Paper Ream,STAT-005,Stationery,200,5,50,1000,No
+Monitor 27-inch,ELEC-008,Electronics,3,450,5,1350,Yes
+Standing Desk,FURN-020,Furniture,12,600,8,7200,No
+Wireless Mouse,ELEC-015,Electronics,50,25,20,1250,No
+Desk Lamp LED,FURN-025,Furniture,30,45,10,1350,No
+Printer Laser,ELEC-030,Electronics,5,380,3,1900,No
+USB Hub,ELEC-035,Electronics,40,15,15,600,No
+File Cabinet,FURN-040,Furniture,6,250,5,1500,No
+Stapler Heavy,STAT-010,Stationery,75,12,25,900,No
+Keyboard RGB,ELEC-040,Electronics,20,55,10,1100,No
+Whiteboard,FURN-045,Furniture,8,85,5,680,No
+Notebook Pack,STAT-015,Stationery,100,8,40,800,No
+Webcam HD,ELEC-045,Electronics,15,75,8,1125,No
+Conference Table,FURN-050,Furniture,3,450,2,1350,No
+Pen Set,STAT-020,Stationery,60,10,20,600,No
+Monitor Stand,ELEC-050,Electronics,12,35,6,420,No
+Bookshelf,FURN-055,Furniture,7,120,4,840,No
+Label Maker,ELEC-055,Electronics,10,45,5,450,No

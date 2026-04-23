@@ -1,0 +1,21 @@
+ItemName,SKU,Category,Quantity,UnitPrice,ReorderLevel,TotalValue,ReorderFlag
+Neg Quantity,TEST-001,Test,-5,1200,10,0,No
+Neg Price,TEST-002,Test,10,-50,15,0,No
+Zero Reorder,TEST-003,Test,20,50,0,1000,No
+Neg Total,TEST-004,Test,10,100,5,-500,No
+Text Qty,TEST-005,Test,ABC,50,10,500,No
+Text Price,TEST-006,Test,10,High,5,500,No
+Text Reorder,TEST-007,Test,15,25,Five,375,No
+Text Total,TEST-008,Test,5,100,3,Zero,No
+Neg Reorder,TEST-009,Test,20,30,-5,600,No
+Missing Qty,TEST-010,Test,,50,10,500,No
+Missing Price,TEST-011,Test,10,,5,100,No
+Missing Reorder,TEST-012,Test,15,25,,375,No
+Missing Total,TEST-013,Test,8,50,4,,No
+Total Mismatch,TEST-014,Test,5,100,2,1,No
+Flag Mismatch,TEST-015,Test,3,100,10,300,No
+High Qty,TEST-016,Test,999999,1,500000,999999,No
+Neg All,TEST-017,Test,-10,-100,-5,-1000,No
+Very High Price,TEST-018,Test,1,999999,1,999999,No
+Empty All,TEST-019,Test,,,,,
+Reorder Mismatch,TEST-020,Test,20,10,50,200,No
