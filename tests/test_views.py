@@ -556,3 +556,88 @@ class TestAuditLogsView:
         response = admin_client.get(reverse("audit_logs"))
         assert response.status_code == 200
         assert len(response.context["logs"]) == 0
+
+
+@pytest.mark.django_db
+class TestDeleteFileStatusView:
+    def test_delete_requires_login(self, client):
+        response = client.post(
+            "/api/files/1/status/",
+            data=json.dumps({"status": "user_deleted"}),
+            content_type="application/json"
+        )
+        assert response.status_code in [302, 401]
+
+    def test_delete_file_success(self, authenticated_client, test_uploaded_file):
+        file_id = test_uploaded_file.id
+        response = authenticated_client.post(
+            f"/api/files/{file_id}/status/",
+            data=json.dumps({"status": "user_deleted"}),
+            content_type="application/json"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "user_deleted"
+        assert data["deleted_at"] is not None
+        assert data["trash_expires_at"] is not None
+
+    def test_delete_invalid_status(self, authenticated_client, test_uploaded_file):
+        file_id = test_uploaded_file.id
+        response = authenticated_client.post(
+            f"/api/files/{file_id}/status/",
+            data=json.dumps({"status": "invalid_status"}),
+            content_type="application/json"
+        )
+        assert response.status_code == 400
+
+    def test_restore_file_success(self, authenticated_client, test_uploaded_file):
+        file_id = test_uploaded_file.id
+        authenticated_client.post(
+            f"/api/files/{file_id}/status/",
+            data=json.dumps({"status": "user_deleted"}),
+            content_type="application/json"
+        )
+        response = authenticated_client.post(
+            f"/api/files/{file_id}/status/",
+            data=json.dumps({"status": "active"}),
+            content_type="application/json"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "active"
+        assert data["deleted_at"] is None
+        assert data["trash_expires_at"] is None
+
+    def test_cannot_delete_others_file(self, client, test_uploaded_file, test_user):
+        from django.contrib.auth.models import User
+        other_user = User.objects.create_user(username="otheruser", password="otherpass123")
+        client.force_login(other_user)
+        file_id = test_uploaded_file.id
+        response = client.post(
+            f"/api/files/{file_id}/status/",
+            data=json.dumps({"status": "user_deleted"}),
+            content_type="application/json"
+        )
+        assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestTrashView:
+    def test_trash_requires_login(self, client):
+        response = client.get(reverse("trash"))
+        assert response.status_code == 302
+
+    def test_trash_shows_deleted_files(self, authenticated_client, test_uploaded_file):
+        authenticated_client.post(
+            f"/api/files/{test_uploaded_file.id}/status/",
+            data=json.dumps({"status": "user_deleted"}),
+            content_type="application/json"
+        )
+        response = authenticated_client.get(reverse("trash"))
+        assert response.status_code == 200
+        assert len(response.context["files"]) == 1
+
+    def test_trash_excludes_active_files(self, authenticated_client, test_uploaded_file):
+        response = authenticated_client.get(reverse("trash"))
+        assert response.status_code == 200
+        assert len(response.context["files"]) == 0
