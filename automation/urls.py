@@ -24,6 +24,7 @@ urlpatterns = [
     path("upload/", views.upload_file_view, name="upload_file"),
     # History
     path("history/", views.upload_history_view, name="upload_history"),
+    path("trash/", views.trash_view, name="trash"),
     # Report
     path(
         "report/<int:file_id>/", views.validation_report_view, name="validation_report"
@@ -49,4 +50,5 @@ urlpatterns = [
 urlpatterns += [
     path("download/<int:file_id>/", download_excel_view, name="download_excel"),
     path("preview/<int:file_id>/", views.preview_excel_view, name="preview_excel"),
+    path("api/files/<int:file_id>/status/", views.delete_file_status_view, name="delete_file_status"),
 ]
