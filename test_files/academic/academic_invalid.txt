@@ -1,0 +1,21 @@
+Name|Score|Attendance|Bonus|Total
+Invalid Score Over|150|92|10|95
+Invalid Negative|-10|75|5|60
+Invalid Total|50|80|10|ABC
+Text Score|N/A|85|5|90
+Invalid Attendance|70|200|8|78
+Neg Attendance|60|-10|5|65
+Text Bonus|75|80|Ten|85
+High Attendance|65|150|5|70
+Over 100 Score|105|90|8|98
+Text Attendance|80|Present|10|90
+Neg Bonus|55|70|-5|50
+Over Bonus|60|75|100|160
+Total Mismatch|60|80|10|1
+Total Low|50|60|5|10
+Missing Score|None|85|5|90
+Missing Attendance|75|None|5|80
+Missing Bonus|70|80|None|70
+Missing Total|65|75|5|None
+Empty All|None|None|None|None
+Extra High|200|200|50|250

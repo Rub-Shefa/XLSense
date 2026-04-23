@@ -1,0 +1,21 @@
+Name|Score|Attendance|Bonus|Total
+Arafat Hossain|85|92|10|95
+Fatima Begum|72|88|8|80
+Rashid Khan|55|75|5|60
+Nadia Islam|93|97|15|108
+Shakib Al Hasan|41|60|3|44
+Ali Ahmed|67|82|6|73
+Sara Rahman|78|91|9|87
+Kamal Mia|52|70|4|56
+Lisa Pervez|88|95|12|100
+Omar Faruk|45|65|2|47
+Nila Chowdhury|91|98|14|105
+Rana Das|63|78|5|68
+Mona Aktar|76|85|7|83
+Tareq Hasan|58|72|4|62
+Zara Iqbal|82|90|11|93
+Jahid Islam|49|68|3|52
+Rita Dey|95|99|16|111
+Mahfuz Alam|71|80|6|77
+Sonya Ferdows|84|92|10|94
+Imran Khan|57|74|4|61
