@@ -147,33 +147,46 @@ Visit `http://127.0.0.1:8000/` in your browser.
 
 ## Testing
 
-Run the full test suite:
-
+### Core testing
 ```bash
-pytest
+pytest                          # Run all tests
+pytest tests/                   # Run all tests in tests/ directory
 ```
 
-Run with coverage:
+### Run specific test files
+```bash
+pytest tests/test_views.py
+pytest tests/test_utils.py
+pytest tests/test_models.py
+pytest tests/test_forms.py
+pytest tests/test_selectors.py
+pytest tests/test_edge_cases.py
+pytest tests/test_workflows.py
+pytest tests/test_editor_views.py
+pytest tests/test_frontend.py
+```
 
+### Run specific test class
+```bash
+pytest tests/test_views.py::TestAiExplainView
+```
+
+### Run specific test method
+```bash
+pytest tests/test_views.py::TestAiExplainView::test_ai_explain_returns_json
+```
+
+### With coverage
 ```bash
 pytest --cov=automation --cov-report=term-missing
 ```
 
-Run a specific test file:
-
-```bash
-pytest tests/test_views.py
-pytest tests/test_utils.py
-```
-
-Run linting:
-
+### Linting
 ```bash
 ruff check .
 ```
 
-Run formatting:
-
+### Formatting
 ```bash
 ruff format .
 ```
