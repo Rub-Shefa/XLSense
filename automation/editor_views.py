@@ -69,7 +69,7 @@ def workbook_editor_view(request, file_id):
             # Extract header (first row)
             headers = []
             for cell_f, cell_v in zip(next(ws_formula.iter_rows(min_row=1, max_row=1)), 
-                                    next(ws_value.iter_rows(min_row=1, max_row=1))):
+                                      next(ws_value.iter_rows(min_row=1, max_row=1))):
                 headers.append(cell_v.value if cell_v.value is not None else "")
 
             # Data rows (from row 2 onward)
@@ -129,8 +129,11 @@ def workbook_editor_view(request, file_id):
 
         columns_with_classes = []
         ai_matches = {}
-        if not saved_mappings:
-          ai_matches = ai_match_columns(user_columns_original, db_columns)
+        is_first_load = not bool(saved_mappings) # Keep track if this is the first load
+        new_initial_mapping = {} # Store AI mapping to save to DB
+
+        if is_first_load:
+            ai_matches = ai_match_columns(user_columns_original, db_columns)
 
         # Process user columns
         for col in user_columns_original:
@@ -141,19 +144,26 @@ def workbook_editor_view(request, file_id):
                 matched_db = ai_matches[col]
             else:
                 matched_db = find_matching_db_column(col, db_columns)
+            
             if matched_db:
                 columns_with_classes.append({"name": col, "class": "header-matched", "matched_db": matched_db})
+                if is_first_load:
+                    new_initial_mapping[col] = matched_db # Capture the new mapping
             else:
                 columns_with_classes.append({"name": col, "class": "header-custom", "matched_db": None})
 
-        # Add missing domain columns (only if no saved mappings)
-        if not saved_mappings:
-            matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
-            for db_col in db_columns:
-                if db_col not in matched_cols and db_col not in df.columns:
-                    df[db_col] = ""
-                    formulas_df[db_col] = None
-                    columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": db_col})
+        matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
+        for db_col in db_columns:
+            if db_col not in matched_cols and db_col not in df.columns:
+                df[db_col] = ""
+                formulas_df[db_col] = None
+                columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": db_col})
+
+                
+        if is_first_load and new_initial_mapping:
+            uploaded_file.column_mappings = new_initial_mapping
+            uploaded_file.save()
+            saved_mappings = new_initial_mapping # Update variable so JS gets the data
 
         current_columns = [c["name"] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
@@ -176,9 +186,7 @@ def workbook_editor_view(request, file_id):
     style_data_json = json.dumps(style_data)
     formulas_data_json = json.dumps(formulas_data)
 
-
-
-    # Run validation on the file (if not already done)
+    # Run validation on the file (now it has the mappings!)
     validate_excel_data(uploaded_file)
 
     # Get all validation errors for this file
@@ -198,18 +206,19 @@ def workbook_editor_view(request, file_id):
     print("RECOMMENDATIONS FROM BACKEND:", recommendations)
 
     return render(request, "workbook_editor.html", {
-    "file": uploaded_file,
-    "current_columns": current_columns,
-    "columns_with_classes": columns_with_classes,
-    "db_columns": db_columns,
-    "user_columns": user_columns_original,
-    "preview_data": preview_data,
-    "saved_mappings_json": saved_mappings_json,
-    "style_data_json": style_data_json,
-    "formulas_data_json": formulas_data_json,
-    "errors_data_json": json.dumps(errors_data),        
-    "recommendations_json": json.dumps(recommendations), 
-})
+        "file": uploaded_file,
+        "current_columns": current_columns,
+        "columns_with_classes": columns_with_classes,
+        "db_columns": db_columns,
+        "user_columns": user_columns_original,
+        "preview_data": preview_data,
+        "saved_mappings_json": saved_mappings_json,
+        "style_data_json": style_data_json,
+        "formulas_data_json": formulas_data_json,
+        "errors_data_json": json.dumps(errors_data),        
+        "recommendations_json": json.dumps(recommendations), 
+        "is_draft": uploaded_file.status != "Completed" # --- ADDED THE DRAFT FLAG ---
+    })
 
 
 @csrf_exempt
@@ -237,6 +246,8 @@ def save_workbook_data(request, file_id):
             original_file = get_object_or_404(
                 UploadedFile, id=file_id, user=request.user
             )
+
+            
 
             # 2. Prevent Pandas Crash
             if len(headers) != len(set(headers)):
@@ -296,7 +307,9 @@ def save_workbook_data(request, file_id):
                 template=original_file.template,
                 status="Completed",
                 processed_time=timezone.now(),
+                file_status="active", 
             )
+            print(f"New file status: {new_uploaded_file.status}")
             
             # 7. Save the physical file first
             new_uploaded_file.file.save(new_filename, ContentFile(output.read()), save=True)
@@ -311,6 +324,7 @@ def save_workbook_data(request, file_id):
 
             # Verify for the logs
             new_uploaded_file.refresh_from_db()
+            print(f"DEBUG: Final status for file {new_uploaded_file.id}: {new_uploaded_file.status}")
             print(f"✅ VERIFIED: DB now holds {len(str(new_uploaded_file.style_data))} characters.")
             
             # Run validation on the newly saved file
@@ -346,6 +360,9 @@ def validate_single_cell(request):
     uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
     template = uploaded_file.template
     
+    # 1. FETCH THE SAVED MAPPINGS
+    saved_mappings = getattr(uploaded_file, "column_mappings", {})
+    
     from .models import ValidationRule
     rules = ValidationRule.objects.filter(template=template)
     
@@ -356,7 +373,7 @@ def validate_single_cell(request):
     matched_rule = None
     for rule in rules:
         rule_norm = normalize(rule.column_name)
-        if rule_norm == target_norm or rule_norm in target_norm or target_norm in rule_norm:
+        if rule_norm == target_norm:
             matched_rule = rule
             break
     
@@ -364,7 +381,6 @@ def validate_single_cell(request):
         return JsonResponse({'is_valid': True})
     
     try:
-        # 1. Parse primary cell value
         if value and str(value).replace('.', '', 1).replace('-', '', 1).isdigit():
             val = float(value)
         else:
@@ -372,7 +388,7 @@ def validate_single_cell(request):
             
         allowed_locals = {'x': val, 'index': row_index}
         
-        # 2. INJECT ROW DATA & CRUSH CASE-SENSITIVITY BUG
+        # 2. INJECT ROW DATA & MAPPED NAMES
         for key, val_str in row_data.items():
             if not key: continue
             clean_key = str(key).replace(" ", "") 
@@ -382,21 +398,42 @@ def validate_single_cell(request):
                 parsed_val = float(val_str)
             else:
                 parsed_val = str(val_str).strip() if val_str else ""
-                # If a math rule runs on an empty cell, default it to 0
                 if parsed_val == "" and ("<" in matched_rule.condition_expression or ">" in matched_rule.condition_expression):
                     parsed_val = 0
                 
-            # Inject EVERY case variation so Python eval() never fails on a mismatch!
-            allowed_locals[clean_key] = parsed_val              # Original (e.g., TOTAL)
-            allowed_locals[clean_key.lower()] = parsed_val      # total
-            allowed_locals[clean_key.upper()] = parsed_val      # TOTAL
-            allowed_locals[clean_key.title()] = parsed_val      # Total
-            allowed_locals[clean_key.capitalize()] = parsed_val # Total
+            # Inject original JS variations
+            allowed_locals[clean_key] = parsed_val              
+            allowed_locals[clean_key.lower()] = parsed_val      
+            allowed_locals[clean_key.upper()] = parsed_val      
+            allowed_locals[clean_key.title()] = parsed_val      
+            allowed_locals[clean_key.capitalize()] = parsed_val 
+            
+            # --- THE FIX: INJECT THE MAPPED NAME ---
+            # We compare the normalized keys because JS sometimes changes headers (e.g., adds underscores)
+            for excel_col, db_col in saved_mappings.items():
+                if normalize(excel_col) == normalize(key):
+                    # Inject the mapped name (e.g., 'Bonus') so Python eval() can find it!
+                    allowed_locals[db_col] = parsed_val
+                    allowed_locals[str(db_col).replace(" ", "")] = parsed_val
                 
         allowed_globals = {
             '__builtins__': None, 'str': str, 'int': int, 'float': float, 
             'len': len, 'abs': abs, 'round': round,
         }
+
+        # --- NEW DEBUG CODE ---
+        print("\n=== LIVE VALIDATION DEBUG ===")
+        print(f"Rule Expression: {matched_rule.condition_expression}")
+        print(f"Cell Value (x): '{val}'")
+        print(f"Row Data from JS: {row_data}")
+        # Note: getattr(uploaded_file, "column_mappings", {}) must be defined earlier in the function for this to print
+        try:
+            print(f"Database Mappings: {getattr(uploaded_file, 'column_mappings', {})}")
+        except:
+            print("Database Mappings: Not found in this scope")
+        print(f"Variables injected to Python: {allowed_locals.keys()}")
+        print("=============================\n")
+        # ----------------------
         
         is_valid = bool(eval(matched_rule.condition_expression, allowed_globals, allowed_locals))
         error_msg = matched_rule.error_message if not is_valid else ''

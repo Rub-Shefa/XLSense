@@ -132,7 +132,7 @@
 
 <!-- Spreadsheet Container -->
 
-<!-- Floating formula panel (hidden by default) -->
+<!-- Floating formula panel  -->
 <div id="formulaPanel" style="display: none; position: absolute; background: #ffffff; border: 2px solid #1e6f3f; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.2); padding: 12px; z-index: 1000; width: 360px;">
     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
         <button class="panel-formula-btn" data-func="SUM">SUM</button>
@@ -198,7 +198,7 @@
     <div><i class="fas fa-database"></i> Ready · XLSense Intelligent Automation</div>
 </div>
 
-<script>
+<<script>
     window.DJANGO_VARS = {
         savedMappings: {{ saved_mappings_json|safe|default:"{}" }},
         styleData: {{ style_data_json|safe|default:"[]" }},
@@ -208,7 +208,7 @@
         csrfToken: "{{ csrf_token }}",
         errorsData: {{ errors_data_json|safe }},
         recommendations: {{ recommendations_json|safe }},
-        fileId: {{ file.id }},
+        fileId: {{ file.id }}
     };
 </script>
     <script src="{% static 'js/editor_logic.js' %}"></script>

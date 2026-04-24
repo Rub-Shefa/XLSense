@@ -49,11 +49,9 @@ Now return the JSON mapping."""
         response.raise_for_status()
         data = response.json()
         content = data["choices"][0]["message"]["content"]
-        # Extract JSON from response (sometimes markdown wrapped)
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         mapping = json.loads(content)
-        # Validate keys are in file_columns, values in db_columns or null
         valid_mapping = {}
         for fc in file_columns:
             if fc in mapping and mapping[fc] in db_columns:
@@ -110,14 +108,12 @@ def validate_excel_data(uploaded_file_obj):
     print(f"Number of formula rules: {formula_rules.count()}")
 
     for index, row in df.iterrows():
-        # Keep track of which columns already failed so we don't double-report!
         failed_columns_for_row = set()
 
         # =========================================================
         # 1. BUILD ROBUST ROW CONTEXT (REFINED)
         # =========================================================
         row_context = {}
-        # Get the mappings the user saved in the UI
         saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
 
         for key, val_str in row.items():
@@ -140,15 +136,9 @@ def validate_excel_data(uploaded_file_obj):
             row_context[clean_key.title()] = parsed_val
             
             # B. CRITICAL: Add the MAPPED name to context
-            # If the file has '10sqrtx' and it's mapped to 'Bonus', 
-            # this adds 'Bonus' to the context so eval() can find it!
             if key in saved_mappings:
                 db_name = saved_mappings[key]
                 row_context[db_name] = parsed_val
-        
-        # DEBUG PRINT: Run this once and check your terminal 
-        # to see if 'Bonus' is actually in this list!
-        # print(f"Row Context Keys: {row_context.keys()}")
 
         # =========================================================
         # 2. LOGIC VALIDATION
@@ -187,7 +177,6 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=rule.error_message,
                             is_valid=False,
                         )
-                        # Mark this column as failed so the Formula Audit ignores it!
                         failed_columns_for_row.add(actual_col)
                         print(f"  -> Validation failed for row {index+1}, column {actual_col}")
                 except Exception as e:
@@ -200,7 +189,6 @@ def validate_excel_data(uploaded_file_obj):
         for f_rule in formula_rules:
             actual_target_col = find_best_column(f_rule.target_column, df.columns)
             
-            # Skip this formula check if a Logic Validation rule already failed for this exact cell
             if actual_target_col and actual_target_col not in failed_columns_for_row:
                 try:
                     excel_val = row[actual_target_col]
@@ -211,7 +199,6 @@ def validate_excel_data(uploaded_file_obj):
                         f_rule.condition_expression, {"__builtins__": None}, safe_formula_context
                     )
                     
-                    # Clean up the display values so it says "Empty" instead of "nan"
                     display_excel_val = "Empty" if pd.isna(excel_val) or str(excel_val).strip() == "" else str(excel_val).strip()
                     display_expected_val = str(expected_val).strip()
 
@@ -230,47 +217,29 @@ def validate_excel_data(uploaded_file_obj):
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     from .models import FormulaRule, ValidationRule
-    from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, find_best_column
-    import pandas as pd
+    from .utils import find_best_column
 
+    print(f"DEBUG: File name: {uploaded_file_obj.file.name}")
+    print(f"DEBUG: Contains '_edited'? {'_edited' in uploaded_file_obj.file.name}")
+    if "_edited" in uploaded_file_obj.file.name:
+        print("DEBUG: Returning empty because file is edited")
+        return []
     template = uploaded_file_obj.template
+    
+    # Get all columns defined in the DB for this template
     validation_cols = set(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
     formula_cols = set(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
     all_domain_cols = validation_cols.union(formula_cols)
 
-    # Load the actual DataFrame to check column content
-    file_path = uploaded_file_obj.file.path
-    if file_path.endswith('.csv'):
-        df = pd.read_csv(file_path)
-    else:
-        df = pd.read_excel(file_path)
-    
-    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
-    df = preprocess_dataframe(df)
-    df = remove_empty_unnamed_columns(df)
-
-    actual_columns = list(df.columns)
-
+    # Get what is actually mapped in the file
     saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
-    
-    reverse_map = {}
-    
-    if saved_mappings:
-        for file_col, db_col in saved_mappings.items():
-            reverse_map[db_col] = file_col
-    else:
-        if actual_columns and all_domain_cols:
-            ai_mapping = ai_match_columns(actual_columns, list(all_domain_cols))
-            for file_col, db_col in ai_mapping.items():
-                reverse_map[db_col] = file_col
+    mapped_db_cols = set(saved_mappings.values())
 
     recommendations = []
-    for domain_col in all_domain_cols:
-        # Check if column exists (via user mapping, AI mapping, or fuzzy text match)
-        actual_col = reverse_map.get(domain_col) or find_best_column(domain_col, actual_columns)
-        exists = actual_col is not None
 
-        if not exists:
+    for domain_col in all_domain_cols:
+        # If the DB column is NOT in our saved mappings, it is missing!
+        if domain_col not in mapped_db_cols:
             formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
             if formula_rule:
                 formula = formula_rule.condition_expression
@@ -279,7 +248,11 @@ def get_formula_recommendations(uploaded_file_obj, df_columns):
                 formula = "None (Manual Data Entry)" 
                 message = f"Suggested: Create '{domain_col}' column (required for validation)."
             
-            recommendations.append({"column": domain_col, "formula": formula, "message": message})
+            recommendations.append({
+                "column": domain_col, 
+                "formula": formula, 
+                "message": message
+            })
             
     return recommendations
 
@@ -381,22 +354,15 @@ def preprocess_dataframe(df):
     # clean column names
     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
 
-    # replace empty strings with NaN
     df.replace(r"^\s*$", pd.NA, regex=True, inplace=True)
-
-    # trim values
     for col in df.columns:
         # This works whether it's a Series or a DataFrame with one column
         if pd.api.types.is_object_dtype(df[col]):
             df[col] = df[col].astype(str).str.strip()
             df[col] = df[col].replace("nan", pd.NA)
 
-    # remove fully empty rows
     df = df.dropna(how="all")
-
-    # remove rows with only 1 value
     df = df[df.count(axis=1) > 1]
-
     df = df.reset_index(drop=True)
 
     return df
