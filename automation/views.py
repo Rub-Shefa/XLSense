@@ -414,8 +414,12 @@ def upload_file_view(request):
                 continue
 
             uploaded_file = UploadedFile.objects.create(
-                user=request.user, template=template, file=file, status="Processing"
-            )
+    user=request.user,
+    template=template,
+    file=file,
+    status="Processing",
+    file_status="active",   
+)
 
             try:
                 file.seek(0)
@@ -656,7 +660,7 @@ def validation_report_view(request, file_id):
     if request.user.is_staff:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
-        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user, file_status="active")
+        uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
 
     AuditLog.objects.create(
         user=request.user,
@@ -699,6 +703,9 @@ def validation_report_view(request, file_id):
 @csrf_exempt
 @login_required
 @require_POST
+@csrf_exempt
+@login_required
+@require_POST
 def ai_explain_view(request):
     try:
         data = json.loads(request.body)
@@ -706,55 +713,46 @@ def ai_explain_view(request):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     result_id = data.get("result_id")
-    if not result_id:
-        return JsonResponse({"error": "result_id is required"}, status=400)
+    # Get context data (row values) if they exist
+    context_data = data.get("row_data") 
 
-    # 1. Check if the ID is positive (saved in DB) or negative (live typing)
+    # 1. Handle Saved Database Errors (Report Page)
     try:
         is_real_db_id = int(result_id) > 0
-    except ValueError:
+    except (ValueError, TypeError):
         is_real_db_id = False
 
     if is_real_db_id:
         result = get_object_or_404(ValidationResult, id=result_id)
         template = result.file.template
-
         formula = FormulaRule.objects.filter(
             template=template,
             target_column__iexact=result.column_name,
         ).first()
 
-        if formula:
-            explanation, ai_success = generate_ai_explanation(
-                formula_name=formula.formula_name,
-                target_column=formula.target_column,
-                condition_expression=formula.condition_expression,
-            )
-        else:
-            explanation, ai_success = generate_ai_explanation(
-                formula_name="Validation Rule",
-                target_column=result.column_name,
-                condition_expression=result.error_details,
-            )
+        explanation, ai_success = generate_ai_explanation(
+            formula_name=formula.formula_name if formula else "Validation Rule",
+            target_column=result.column_name,
+            condition_expression=formula.condition_expression if formula else result.error_details,
+            context_data=context_data # Pass context if available
+        )
         return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
 
+    # 2. Handle Live Typing Errors (Editor Page)
     else:
         cell_value = data.get("cell_value", "Empty")
         column_name = data.get("column_name", "Unknown")
         rule_error = data.get("rule_error", "Invalid value")
 
-        enhanced_context = (
-            f"The user typed '{cell_value}' into '{column_name}'. "
-            f"Rule violated: {rule_error}. "
-            f"Explain to the user directly why this is wrong and what they should do. "
-            f"Keep it to 2 short, conversational sentences. Do not use bullet points, and do not start your response with 'Explanation:' or 'The error occurs'."
-        )
-
+        # We combine the error and the prompt into one clean instruction
+        # But we let generate_ai_explanation handle the 'bullet point' style!
         explanation, ai_success = generate_ai_explanation(
-            formula_name="Live Validation",
+            formula_name="Live Entry Check",
             target_column=column_name,
-            condition_expression=enhanced_context,
+            condition_expression=f"User entered '{cell_value}'. Error: {rule_error}",
+            context_data=context_data # This is the magic that gives the AI the student's marks!
         )
+        
         return JsonResponse({"explanation": explanation, "ai_used": ai_success}, status=200)
 
 
@@ -868,7 +866,6 @@ def download_excel_view(request, file_id):
                 style_data = None
 
 
-    # Helper function to convert color to aRGB format
     def convert_to_argb(color_value):
         """Convert various color formats to openpyxl aRGB format (8 hex chars)"""
         if not color_value:
@@ -1118,13 +1115,19 @@ def preview_excel_view(request, file_id):
 
 @login_required
 def workbook_list_view(request):
-    all_files = UploadedFile.objects.filter(user=request.user, file_status="active").order_by("-upload_time")
+    all_files = UploadedFile.objects.filter(user=request.user).order_by("-upload_time")
+    
+    print("\n===== DEBUG WORKBOOK LIST =====")
+    print(f"Total files: {all_files.count()}") 
+    for f in all_files:
+        print(f"ID: {f.id}, Name: {f.file.name}, status: {f.status}, file_status: {f.file_status}")
+    print("===============================\n")
     
     original_files = []
     edited_files = []
     
     for f in all_files:
-        if f.column_mappings or "_edited" in f.file.name:
+        if "_edited" in f.file.name:
             edited_files.append(f)
         else:
             original_files.append(f)

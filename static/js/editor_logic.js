@@ -35,19 +35,8 @@ function captureState() {
         document.querySelectorAll('#tableBody tr').forEach(tr => {
             const rowData = [];
             tr.querySelectorAll('td.editable-cell').forEach(td => {
-                
-                // 🛠️ THE FIX: Only get the raw text, ignore the Explain button!
-                let rawText = '';
-                if (td) {
-                    rawText = Array.from(td.childNodes)
-                        .filter(node => node.nodeType === Node.TEXT_NODE)
-                        .map(node => node.textContent)
-                        .join('')
-                        .trim();
-                }
-
                 rowData.push({
-                    text: rawText,
+                    text: td ? td.innerText : '',
                     style: td ? td.style.cssText : '',
                     formula: (td && cellFormulas.has(td)) ? cellFormulas.get(td) : '',
                     hasError: td ? td.classList.contains('validation-error') : false,
@@ -58,7 +47,11 @@ function captureState() {
             rows.push(rowData);
         });
 
-        if (headers.length === 0 || rows.length === 0) return;
+        // Only push if we have actual data
+        if (headers.length === 0 || rows.length === 0) {
+            console.warn('Skipping captureState: empty table');
+            return;
+        }
 
         const currentState = { headers: headers, rows: rows };
         const currentStateJson = JSON.stringify(currentState);
@@ -75,7 +68,10 @@ function captureState() {
 }
 
 function restoreState(state) {
-    if (!state || !state.headers || !state.rows || state.rows.length === 0) return;
+    if (!state || !state.headers || !state.rows || state.rows.length === 0) {
+        console.warn('Invalid state, skipping restore');
+        return;
+    }
     isRestoring = true;
 
     try {
@@ -112,96 +108,43 @@ function restoreState(state) {
 
             const newCells = tr.querySelectorAll('td.editable-cell');
             row.forEach((cellData, ci) => {
-                if (cellData.formula && newCells[ci]) cellFormulas.set(newCells[ci], cellData.formula);
-                
+                if (cellData.formula && newCells[ci]) {
+                    cellFormulas.set(newCells[ci], cellData.formula);
+                }
+                // Restore validation error
                 if (cellData.hasError && newCells[ci]) {
                     newCells[ci].classList.add('validation-error');
                     if (cellData.errorMsg) newCells[ci].setAttribute('data-error', cellData.errorMsg);
                     if (cellData.errorId) newCells[ci].setAttribute('data-error-id', cellData.errorId);
-                    
                     if (!newCells[ci].querySelector('.error-explain-btn')) {
                         const explainBtn = document.createElement('button');
-                        explainBtn.innerHTML = '✨ AI Explain'; 
+                        explainBtn.textContent = 'Explain';
                         explainBtn.className = 'error-explain-btn';
                         explainBtn.style.display = 'none';
                         explainBtn.onclick = (e) => {
-    e.stopPropagation();
-
-    // 1. Immediately create and show the panel with the loading state
-    const panel = document.createElement('div');
-    panel.className = 'floating-explanation-panel'; 
-    
-    // We set up the HTML structure just like your report page
-    panel.innerHTML = `
-        <div class="ai-explanation-box">
-            <div class="ai-loading" style="display: flex; align-items: center; gap: 8px; padding: 10px;">
-                <span class="spinner" style="width: 16px; height: 16px; border: 2px solid transparent; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;"></span> 
-                <span class="font-medium">Generating explanation...</span>
-            </div>
-            
-            <div class="ai-content-wrapper" style="display: none; padding: 10px;">
-                <div class="ai-insight-header" style="font-weight: bold; margin-bottom: 8px;"></div>
-                <div class="ai-content" style="white-space: pre-wrap; line-height: 1.5;"></div>
-            </div>
-        </div>
-        <button class="close-explanation" style="position: absolute; top: 8px; right: 8px; cursor: pointer; border: none; background: none; font-size: 16px;">×</button>
-    `;
-
-    // Remove any existing panels so they don't stack up on the screen
-    const existingPanel = document.querySelector('.floating-explanation-panel');
-    if (existingPanel) existingPanel.remove();
-
-    document.body.appendChild(panel);
-    
-    // Setup close button
-    panel.querySelector('.close-explanation').onclick = () => panel.remove();
-
-    // 2. Prepare the payload
-    const payload = { 
-        result_id: cellData.errorId,
-        column_name: colName,           
-        cell_value: cellData.text,      
-        rule_error: cellData.errorMsg   
-    };
-
-    // 3. Fetch the data from the backend
-    fetch('/ai-explain/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
-        body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
-        // Hide the loading spinner
-        panel.querySelector('.ai-loading').style.display = 'none';
-        
-        // Show the content wrapper
-        panel.querySelector('.ai-content-wrapper').style.display = 'block';
-        
-        // Set the dynamic header based on whether AI was used
-        const header = panel.querySelector('.ai-insight-header');
-        if (data.ai_used) {
-            header.innerHTML = '✨ Intelligent Auditor Analysis';
-        } else {
-            header.innerHTML = '📋 Rule-Based Fallback'; // You can change this text to whatever you like
-        }
-        
-        // Format the line breaks properly and inject the text
-        const formattedExplanation = data.explanation.replace(/\n/g, '<br>');
-        panel.querySelector('.ai-content').innerHTML = formattedExplanation;
-
-        // Auto-close after 10 seconds so it doesn't stay on screen forever
-        setTimeout(() => { if (document.body.contains(panel)) panel.remove(); }, 10000);
-    })
-    .catch(err => {
-        console.error(err);
-        // If it fails, show an error state instead of spinning forever
-        panel.querySelector('.ai-loading').style.display = 'none';
-        panel.querySelector('.ai-content-wrapper').style.display = 'block';
-        panel.querySelector('.ai-insight-header').innerHTML = '⚠️ Connection Error';
-        panel.querySelector('.ai-content').innerHTML = "Could not connect to the AI service.";
-    });
-};
+                            e.stopPropagation();
+                            fetch('/ai-explain/', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+                                body: JSON.stringify({ result_id: cellData.errorId })
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                const panel = document.createElement('div');
+                                panel.className = 'floating-explanation-panel';
+                                panel.innerHTML = `
+                                    <div class="ai-explanation-box">
+                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                                        <div class="ai-content">${data.explanation}</div>
+                                    </div>
+                                    <button class="close-explanation">×</button>
+                                `;
+                                document.body.appendChild(panel);
+                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                                setTimeout(() => panel.remove(), 8000);
+                            })
+                            .catch(err => console.error(err));
+                        };
                         newCells[ci].appendChild(explainBtn);
                         newCells[ci].addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
                         newCells[ci].addEventListener('mouseleave', () => explainBtn.style.display = 'none');
@@ -212,31 +155,15 @@ function restoreState(state) {
 
         attachCellEvents();
         updateStatusBar();
-        if(typeof renumberRows === 'function') renumberRows();
+        renumberRows();
         lastStateJson = JSON.stringify(state);
         activeCell = null;
-        if(typeof clearSelection === 'function') clearSelection();
+        clearSelection();
     } catch (e) {
         console.error("Error during restoreState:", e);
     } finally {
         setTimeout(() => { isRestoring = false; }, 10);
     }
-}
-
-// 🛠️ THE FIX: Reusable function so your CSS stays perfect everywhere
-function showExplanationPanel(message) {
-    const panel = document.createElement('div');
-    panel.className = 'floating-explanation-panel';
-    panel.innerHTML = `
-        <div class="ai-explanation-box">
-            <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
-            <div class="ai-content">${message}</div>
-        </div>
-        <button class="close-explanation">×</button>
-    `;
-    document.body.appendChild(panel);
-    panel.querySelector('.close-explanation').onclick = () => panel.remove();
-    setTimeout(() => panel.remove(), 8000);
 }
 
 function undo() {
@@ -302,7 +229,10 @@ function markdownToHtml(text) {
 
     return html;
 }
-
+function cleanCriteria(criteria) {
+    if (typeof criteria !== 'string') return criteria;
+    return criteria.replace(/^["']|["']$/g, '').trim();
+}
 // ==========================================
 // 3. ENHANCED FORMULA EVALUATION (with IF, COUNTIF, COUNTA, XLOOKUP, VLOOKUP)
 // ==========================================
@@ -362,34 +292,7 @@ function evaluateFormula(formula, getCellValue) {
                 return falseVal;
             }
         }
-        
-        if (func === 'COUNTIF') {
-            if (args.length < 2) return '#ERROR';
-            let range = args[0];
-            let criteria = args[1];
-            let cells = getCellsInRange(range, getCellValue);
-            let count = 0;
-            for (let cell of cells) {
-                let val = getCellValue(cell);
-                let match = false;
-                if (criteria.startsWith('>') || criteria.startsWith('<') || criteria.startsWith('=')) {
-                    let op = criteria.match(/[<>]=?/)[0];
-                    let target = parseFloat(criteria.slice(op.length));
-                    let num = parseFloat(val);
-                    if (isNaN(num)) continue;
-                    if (op === '>' && num > target) match = true;
-                    else if (op === '<' && num < target) match = true;
-                    else if (op === '>=' && num >= target) match = true;
-                    else if (op === '<=' && num <= target) match = true;
-                    else if (op === '=' && num == target) match = true;
-                } else {
-                    match = (val == criteria);
-                }
-                if (match) count++;
-            }
-            return count;
-        }
-        
+
         if (func === 'COUNTA') {
             if (args.length < 1) return '#ERROR';
             let range = args[0];
@@ -401,47 +304,135 @@ function evaluateFormula(formula, getCellValue) {
             }
             return count;
         }
+
+        
+        if (func === 'COUNTIF') {
+    if (args.length < 2) return '#ERROR';
+    let range = args[0];
+    let criteria = args[1];
+    let cells = getCellsInRange(range, getCellValue);
+    let count = 0;
+    
+    let cleanCriteria = criteria;
+    if (typeof cleanCriteria === 'string') {
+        cleanCriteria = cleanCriteria.trim();
+        if ((cleanCriteria.startsWith('"') && cleanCriteria.endsWith('"')) ||
+            (cleanCriteria.startsWith("'") && cleanCriteria.endsWith("'"))) {
+            cleanCriteria = cleanCriteria.slice(1, -1);
+        }
+    }
+    console.log("COUNTIF criteria (cleaned):", cleanCriteria);
+    
+    for (let cell of cells) {
+        let val = getCellValue(cell);
+        let match = false;
+        
+        if (cleanCriteria.startsWith('>') || cleanCriteria.startsWith('<') || cleanCriteria.startsWith('=')) {
+            let op = cleanCriteria.match(/[<>]=?/)[0];
+            let target = parseFloat(cleanCriteria.slice(op.length));
+            let num = parseFloat(val);
+            if (isNaN(num)) continue;
+            if (op === '>' && num > target) match = true;
+            else if (op === '<' && num < target) match = true;
+            else if (op === '>=' && num >= target) match = true;
+            else if (op === '<=' && num <= target) match = true;
+            else if (op === '=' && num == target) match = true;
+        } else {
+            // String comparison – trim and compare
+            let cleanVal = (typeof val === 'string') ? val.trim() : val;
+            let cleanCrit = (typeof cleanCriteria === 'string') ? cleanCriteria.trim() : cleanCriteria;
+            match = (cleanVal == cleanCrit);
+        }
+        if (match) count++;
+    }
+    return count;
+}
+
+console.log("COUNTIF criteria (cleaned):", cleanCriteria);
+    
+    for (let cell of cells) {
+        let val = getCellValue(cell);
+        let match = false;
+        
+        if (cleanCriteria.startsWith('>') || cleanCriteria.startsWith('<') || cleanCriteria.startsWith('=')) {
+            let op = cleanCriteria.match(/[<>]=?/)[0];
+            let target = parseFloat(cleanCriteria.slice(op.length));
+            let num = parseFloat(val);
+            if (isNaN(num)) continue;
+            if (op === '>' && num > target) match = true;
+            else if (op === '<' && num < target) match = true;
+            else if (op === '>=' && num >= target) match = true;
+            else if (op === '<=' && num <= target) match = true;
+            else if (op === '=' && num == target) match = true;
+        } else {
+            // String comparison – trim and compare
+            let cleanVal = (typeof val === 'string') ? val.trim() : val;
+            let cleanCrit = (typeof cleanCriteria === 'string') ? cleanCriteria.trim() : cleanCriteria;
+            match = (cleanVal == cleanCrit);
+        }
+        if (match) count++;
+    }
+    return count;
+}
+        
         
         if (func === 'XLOOKUP') {
-            if (args.length < 3) return '#ERROR';
-            let lookupValue = args[0];
-            let lookupArray = args[1];
-            let returnArray = args[2];
-            let ifNotFound = args.length > 3 ? args[3] : '#N/A';
-            let lookupCells = getCellsInRange(lookupArray, getCellValue);
-            let returnCells = getCellsInRange(returnArray, getCellValue);
-            for (let i = 0; i < lookupCells.length; i++) {
-                let val = getCellValue(lookupCells[i]);
-                if (val == lookupValue) {
-                    let retVal = getCellValue(returnCells[i]);
-                    return retVal !== null ? retVal : '#N/A';
-                }
-            }
-            return ifNotFound;
+    if (args.length < 3) return '#ERROR';
+    let lookupValue = args[0];
+    let lookupArray = args[1];
+    let returnArray = args[2];
+    let ifNotFound = args.length > 3 ? args[3] : '#N/A';
+    
+    // Clean the lookup value (trim, convert to string)
+    let cleanLookup = (typeof lookupValue === 'string') ? lookupValue.trim() : lookupValue;
+    
+    let lookupCells = getCellsInRange(lookupArray, getCellValue);
+    let returnCells = getCellsInRange(returnArray, getCellValue);
+    
+    for (let i = 0; i < lookupCells.length; i++) {
+        let val = getCellValue(lookupCells[i]);
+        // Clean the cell value
+        let cleanVal = (typeof val === 'string') ? val.trim() : val;
+        if (cleanVal == cleanLookup) {
+            let retVal = getCellValue(returnCells[i]);
+            return (retVal !== null && retVal !== '') ? retVal : ifNotFound;
         }
+    }
+    return ifNotFound;
+}
         
-        if (func === 'VLOOKUP') {
-            if (args.length < 3) return '#ERROR';
-            let lookupValue = args[0];
-            let tableArray = args[1];
-            let colIndex = parseInt(args[2]);
-            let rangeLookup = args.length > 3 ? args[3] : 'TRUE';
-            let tableCells = getCellsInRange(tableArray, getCellValue);
-            let rows = tableCells.length / getColumnCount(tableArray);
-            for (let i = 0; i < rows; i++) {
-                let cellRef = tableCells[i];
-                let val = getCellValue(cellRef);
-                if (val == lookupValue) {
-                    let targetCellRef = tableCells[i + (colIndex-1)*rows];
-                    let retVal = getCellValue(targetCellRef);
-                    return retVal !== null ? retVal : '#N/A';
-                }
+       if (func === 'VLOOKUP') {
+    if (args.length < 3) return '#ERROR';
+    let lookupValue = args[0];
+    let tableArray = args[1];
+    let colIndex = parseInt(args[2]);
+    let rangeLookup = args.length > 3 ? args[3] : 'TRUE'; // not used, we assume exact match
+    
+    let cleanLookup = (typeof lookupValue === 'string') ? lookupValue.trim() : lookupValue;
+    let tableCells = getCellsInRange(tableArray, getCellValue);
+    let cols = getColumnCount(tableArray);
+    let rows = tableCells.length / cols;
+    
+    for (let i = 0; i < rows; i++) {
+        let firstColIndex = i * cols; // first cell of this row
+        let cellRef = tableCells[firstColIndex];
+        let val = getCellValue(cellRef);
+        let cleanVal = (typeof val === 'string') ? val.trim() : val;
+        
+        if (cleanVal == cleanLookup) {
+            let targetIndex = firstColIndex + (colIndex - 1);
+            if (targetIndex < tableCells.length) {
+                let retVal = getCellValue(tableCells[targetIndex]);
+                return (retVal !== null && retVal !== '') ? retVal : '#N/A';
             }
             return '#N/A';
         }
+    return '#N/A';
+}
         
         return '#NAME?';
     }
+
     
     try {
         let evalExpr = expr.replace(/[A-Z]+[0-9]+/gi, (ref) => {
@@ -863,21 +854,18 @@ function attachCellEvents() {
         }
         updateValueDisplayForCell(cell);
         
-        // Get column name from header
         const colIndex = cell.cellIndex;
         const headerCell = document.querySelector(`#headerRow th:nth-child(${colIndex+1}) .header-label`);
         const columnName = headerCell ? headerCell.innerText.trim() : '';
-        // Get all column names and current row values
 const headers = Array.from(document.querySelectorAll('#headerRow th:not(.row-header-cell)'));
 const rowCells = Array.from(cell.parentElement.querySelectorAll('td.editable-cell'));
 const rowData = {};
 headers.forEach((th, idx) => {
-    const colName = th.querySelector('.header-label')?.textContent.trim();
+    const colName = th.querySelector('.header-label')?.innerText.trim();
     if (colName && rowCells[idx]) {
         rowData[colName] = rowCells[idx].innerText.trim();
     }
 });
-// Then add rowData to the fetch body
         if (columnName) {
             fetch('/validate-cell/', {
                 method: 'POST',
@@ -886,8 +874,7 @@ headers.forEach((th, idx) => {
                     file_id: window.DJANGO_VARS.fileId,
                     column: columnName,
                     value: currentValue,
-                    row: cell.parentElement.rowIndex,
-                    rowData: rowData
+                    row: cell.parentElement.rowIndex
                 })
             })
             .then(res => res.json())
@@ -900,33 +887,35 @@ headers.forEach((th, idx) => {
                         cell.setAttribute('data-error-id', tempId);
                         if (!cell.querySelector('.error-explain-btn')) {
                             const explainBtn = document.createElement('button');
-                            explainBtn.innerHTML = '✨ AI Explain';
+                            explainBtn.textContent = 'Explain';
                             explainBtn.className = 'error-explain-btn';
                             explainBtn.style.display = 'none';
-                            explainBtn.contentEditable = "false";
-                            explainBtn.setAttribute('contenteditable', 'false');
-                            explainBtn.style.userSelect = "none";
                             explainBtn.onclick = (e) => {
                                 e.stopPropagation();
                                 const payload = { 
-            result_id: tempId, // Sends the temporary negative ID
+            result_id: tempId, 
             column_name: columnName, 
             cell_value: currentValue, 
             rule_error: data.error_message 
         };
 
         fetch('/ai-explain/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
-            body: JSON.stringify(payload)
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+        body: JSON.stringify({
+            result_id: -1, // Indicates live validation
+            cell_value: currentValue,
+            column_name: columnName,
+            rule_error: data.error_msg,
+            file_id: window.DJANGO_VARS.fileId,
+            row_data: rowData  
         })
+    })
         .then(res => res.json())
         .then(aiData => {
-            // Use the reusable panel function we created earlier
             if (typeof showExplanationPanel === 'function') {
                 showExplanationPanel(aiData.explanation);
             } else {
-                // Fallback just in case
                 const panel = document.createElement('div');
                 panel.className = 'floating-explanation-panel';
                 panel.innerHTML = `
@@ -940,6 +929,7 @@ headers.forEach((th, idx) => {
                 panel.querySelector('.close-explanation').onclick = () => panel.remove();
                 setTimeout(() => panel.remove(), 8000);
             }
+            console.log(aiData.explanation);
         })
         .catch(err => {
             console.error(err);
@@ -1279,24 +1269,55 @@ window.handleMappingChange = (sel) => {
 // ==========================================
 // 7. KEYBOARD NAVIGATION
 // ==========================================
+// ==========================================
+// 7. KEYBOARD NAVIGATION
+// ==========================================
 function attachKeyboardNavigation() {
     document.addEventListener('keydown', (e) => {
+        const formulaInput = document.getElementById('formulaInput');
+        if (document.activeElement === formulaInput) return;
+
+        if (activeCell && document.activeElement === activeCell) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                updateCellFromFormulaBar(); 
+                const row = activeCell.parentElement;
+                const tbody = document.getElementById('tableBody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const rIdx = rows.indexOf(row);
+                const cells = Array.from(row.querySelectorAll('td.editable-cell'));
+                const cIdx = cells.indexOf(activeCell);
+                if (rIdx + 1 < rows.length) {
+                    rows[rIdx + 1].cells[cIdx + 1].focus();
+                }
+                return;
+            }
+            return;
+        }
+
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
         if (!activeCell) return;
+        
         const row = activeCell.parentElement;
         const tbody = document.getElementById('tableBody');
         const rows = Array.from(tbody.querySelectorAll('tr'));
         const rIdx = rows.indexOf(row);
         const cells = Array.from(row.querySelectorAll('td.editable-cell'));
         const cIdx = cells.indexOf(activeCell);
+        
         if (e.key === 'ArrowUp' && rIdx > 0) { e.preventDefault(); rows[rIdx - 1].cells[cIdx + 1].focus(); }
         else if (e.key === 'ArrowDown' && rIdx < rows.length - 1) { e.preventDefault(); rows[rIdx + 1].cells[cIdx + 1].focus(); }
         else if (e.key === 'ArrowLeft' && cIdx > 0) { e.preventDefault(); cells[cIdx - 1].focus(); }
         else if (e.key === 'ArrowRight' && cIdx < cells.length - 1) { e.preventDefault(); cells[cIdx + 1].focus(); }
-        else if (e.key === 'Enter') { e.preventDefault(); updateCellFromFormulaBar(); rows[rIdx + 1]?.cells[cIdx + 1]?.focus(); }
+        else if (e.key === 'Enter') { 
+            e.preventDefault(); 
+            updateCellFromFormulaBar(); 
+            rows[rIdx + 1]?.cells[cIdx + 1]?.focus(); 
+        }
     });
 }
+
 
 // ==========================================
 // 8. SAVE WORKBOOK
@@ -1596,6 +1617,9 @@ explainBtn.onclick = (e) => {
         }
     });
 }
+
+console.log("DEBUG: recommendations data:", window.DJANGO_VARS.recommendations);
+console.log("DEBUG: recommendations length:", window.DJANGO_VARS.recommendations ? window.DJANGO_VARS.recommendations.length : 'undefined');
 
     // --- Recommendations panel (always visible, placed after status bar) ---
 const targetContainer = document.getElementById('recommendationsTarget');
