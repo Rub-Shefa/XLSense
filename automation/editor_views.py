@@ -153,17 +153,31 @@ def workbook_editor_view(request, file_id):
                 columns_with_classes.append({"name": col, "class": "header-custom", "matched_db": None})
 
         matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
-        for db_col in db_columns:
-            if db_col not in matched_cols and db_col not in df.columns:
-                df[db_col] = ""
-                formulas_df[db_col] = None
-                columns_with_classes.append({"name": db_col, "class": "header-template-only", "matched_db": db_col})
+        
+        # Check if the file name contains "edited" (using .lower() just to be safe)
+        is_edited_file = "edited" in uploaded_file.file.name.lower()
 
+        # ONLY add missing columns if it is the ORIGINAL file
+        if not is_edited_file:
+            for db_col in db_columns:
+                # If a required template column is missing from the user's file
+                if db_col not in matched_cols and db_col not in df.columns:
+                    df[db_col] = ""
+                    formulas_df[db_col] = None
+                    columns_with_classes.append({
+                        "name": db_col, 
+                        "class": "header-template-only", 
+                        "matched_db": db_col
+                    })
                 
         if is_first_load and new_initial_mapping:
             uploaded_file.column_mappings = new_initial_mapping
             uploaded_file.save()
             saved_mappings = new_initial_mapping # Update variable so JS gets the data
+
+        current_columns = [c["name"] for c in columns_with_classes]
+        preview_data = df.fillna("").values.tolist()
+        formulas_data = formulas_df.fillna("").values.tolist()
 
         current_columns = [c["name"] for c in columns_with_classes]
         preview_data = df.fillna("").values.tolist()
@@ -271,7 +285,8 @@ def save_workbook_data(request, file_id):
                 
                 valid_vals = [v for v in clean_row if pd.notna(v) and str(v).strip() not in ["", "nan", "None"]]
                 
-                if len(valid_vals) > 1:
+                # --- CHANGED > 1 TO > 0 ---
+                if len(valid_vals) > 0: 
                     clean_rows.append(clean_row)
                     aligned_style_data.append(row)
 
