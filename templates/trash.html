@@ -272,6 +272,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     var current = parseInt(countEl.textContent.replace(/[^0-9]/g, "")) || 1;
                     countEl.textContent = "Files in trash: " + (current - 1);
                 }
+                setTimeout(function() {
+                    window.location.href = "{% url 'trash' %}";
+                }, 100);
             } else {
                 alert("Failed to restore file");
             }
