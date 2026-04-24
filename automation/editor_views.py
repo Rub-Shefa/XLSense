@@ -12,7 +12,7 @@ from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.core.files.base import ContentFile
 
-from .models import UploadedFile, ValidationRule, FormulaRule, ValidationResult
+from .models import UploadedFile, ValidationRule, FormulaRule, ValidationResult, AuditLog
 from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, validate_excel_data, get_formula_recommendations
 
 @login_required
@@ -319,6 +319,12 @@ def save_workbook_data(request, file_id):
             print(f"Validation called for file ID {new_uploaded_file.id}")
             print("✅ Validation completed for edited file.")
             print("="*50 + "\n")
+
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="File Save",
+                details=f"Saved workbook changes: {new_filename} (via editor)",
+            )
 
             return JsonResponse(
                 {"status": "success", "new_file_id": new_uploaded_file.id}
