@@ -102,11 +102,16 @@ def validate_excel_data(uploaded_file_obj):
     formula_rules = FormulaRule.objects.filter(template=template)
     ValidationResult.objects.filter(file=uploaded_file_obj).delete()
 
+    print(f"Validating file: {uploaded_file_obj.file.name}")
+    print(f"DataFrame columns: {list(df.columns)}")
+    print(f"Number of validation rules: {rules.count()}")
+    print(f"Number of formula rules: {formula_rules.count()}")
+
     for index, row in df.iterrows():
         failed_columns_for_row = set()
 
         # =========================================================
-        # 1. BUILD ROBUST ROW CONTEXT
+        # 1. BUILD ROBUST ROW CONTEXT (REFINED)
         # =========================================================
         row_context = {}
         saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
@@ -115,15 +120,17 @@ def validate_excel_data(uploaded_file_obj):
             if pd.isna(key) or str(key).strip() == "": 
                 continue
             
+            # Clean the value
             if pd.isna(val_str) or val_str == "":
-                parsed_val = 0
+                parsed_val = 0 # Default to 0 for math safety
             else:
                 raw_str = str(val_str).strip()
                 try:
                     parsed_val = float(raw_str)
-                except ValueError:
+                except:
                     parsed_val = raw_str
 
+            # A. Add the original name (and variants) to context
             clean_key = str(key).replace(" ", "")
             row_context[clean_key] = parsed_val
             row_context[clean_key.title()] = parsed_val
@@ -137,22 +144,12 @@ def validate_excel_data(uploaded_file_obj):
         # 2. LOGIC VALIDATION
         # =========================================================
         for rule in rules:
-            actual_col = None
-            # Check mappings first
-            for file_header, db_name in saved_mappings.items():
-                if db_name == rule.column_name:
-                    actual_col = file_header
-                    break
-                    
-            if not actual_col:
-                # Assuming you have a find_best_column function defined elsewhere
-                actual_col = find_best_column(rule.column_name, df.columns)
-
+            actual_col = find_best_column(rule.column_name, df.columns)
             if actual_col:
-                raw_val = row.get(actual_col, "")
+                raw_val = row[actual_col]
 
                 if pd.isna(raw_val) or raw_val == "":
-                    val = 0 if any(op in rule.condition_expression for op in ["<", ">"]) else ""
+                    val = 0 if ("<" in rule.condition_expression or ">" in rule.condition_expression) else ""
                 else:
                     try:
                         if "date" in str(actual_col).lower():
@@ -160,23 +157,16 @@ def validate_excel_data(uploaded_file_obj):
                         else:
                             val = float(raw_val)
                     except:
-                        val = str(raw_val).strip().upper()
+                        val = str(raw_val).strip()
 
                 try:
                     allowed_locals = {"x": val, "index": index}
                     allowed_locals.update(row_context)
 
-                    rule_var_name = str(rule.column_name).replace(" ", "")
-                    allowed_locals[rule_var_name] = val
-                    allowed_locals[rule_var_name.lower()] = val
-                    allowed_locals[rule_var_name.title()] = val
-
                     allowed_globals = {
                         "__builtins__": None,
                         "str": str, "int": int, "float": float,
                         "len": len, "abs": abs, "round": round,
-                        "isinstance": isinstance,  
-                        "type": type               
                     }
 
                     if not eval(rule.condition_expression, allowed_globals, allowed_locals):
@@ -188,16 +178,10 @@ def validate_excel_data(uploaded_file_obj):
                             is_valid=False,
                         )
                         failed_columns_for_row.add(actual_col)
+                        print(f"  -> Validation failed for row {index+1}, column {actual_col}")
                 except Exception as e:
-                    # Logs a true exception in the UI so you know exactly what failed
-                    ValidationResult.objects.create(
-                        file=uploaded_file_obj,
-                        row_index=index + 1,
-                        column_name=actual_col,
-                        error_details=f"Formula Logic Error: {e}",
-                        is_valid=False,
-                    )
-                    failed_columns_for_row.add(actual_col)
+                    print(f"  -> Logic Error evaluating rule '{rule.rule_name}' on col '{actual_col}': {e}")
+                    continue
 
         # =========================================================
         # 3. FORMULA AUDIT
@@ -208,8 +192,12 @@ def validate_excel_data(uploaded_file_obj):
             if actual_target_col and actual_target_col not in failed_columns_for_row:
                 try:
                     excel_val = row[actual_target_col]
+                    
                     safe_formula_context = {k: (0 if v == "" else v) for k, v in row_context.items()}
-                    expected_val = eval(f_rule.condition_expression, {"__builtins__": None}, safe_formula_context)
+                    
+                    expected_val = eval(
+                        f_rule.condition_expression, {"__builtins__": None}, safe_formula_context
+                    )
                     
                     display_excel_val = "Empty" if pd.isna(excel_val) or str(excel_val).strip() == "" else str(excel_val).strip()
                     display_expected_val = str(expected_val).strip()
@@ -222,7 +210,9 @@ def validate_excel_data(uploaded_file_obj):
                             error_details=f"Math Error: Expected {display_expected_val}, found {display_excel_val}.",
                             is_valid=False,
                         )
-                except Exception:
+                        print(f"  -> Formula mismatch for row {index+1}, column {actual_target_col}")
+                except Exception as e:
+                    print(f"  -> Error in formula audit for '{f_rule.target_column}': {e}")
                     continue
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
@@ -267,6 +257,7 @@ def get_formula_recommendations(uploaded_file_obj, df_columns):
     return recommendations
 
 def calculate_quality_score(uploaded_file_obj, total_rows):
+    # FIX: Added local import
     from .models import ValidationResult
 
     error_rows_count = (
@@ -360,6 +351,7 @@ def generate_ai_explanation(
 
 
 def preprocess_dataframe(df):
+    # clean column names
     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
 
     df.replace(r"^\s*$", pd.NA, regex=True, inplace=True)

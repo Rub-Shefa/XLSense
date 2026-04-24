@@ -173,11 +173,6 @@ def login_view(request):
             if user is not None:
                 login(request, user)
                 messages.success(request, f"Welcome back, {username}!")
-                AuditLog.objects.create(
-                    user=user,
-                    action_type="Login",
-                    details=f"User logged in successfully",
-                )
                 return redirectBasedOnRole(user)
 
         messages.error(request, "Invalid username or password.")
@@ -213,23 +208,12 @@ def register_view(request):
 
 
 def logout_view(request):
-    if request.user.is_authenticated:
-        AuditLog.objects.create(
-            user=request.user,
-            action_type="Logout",
-            details=f"User logged out",
-        )
     logout(request)
     return redirect("login")
 
 
 @login_required
 def dashboard_view(request):
-    AuditLog.objects.create(
-        user=request.user,
-        action_type="Dashboard View",
-        details="Viewed user dashboard",
-    )
 
     if is_admin(request.user):
         files = UploadedFile.objects.filter(file_status="active").order_by("-upload_time")
@@ -347,11 +331,6 @@ def admin_dashboard_view(request):
 
 @login_required
 def manage_templates_view(request):
-    AuditLog.objects.create(
-        user=request.user,
-        action_type="Template Viewed",
-        details="Viewed template management page",
-    )
 
     selected_template_id = request.GET.get("template_id")
     templates = DomainTemplate.objects.all()
@@ -384,6 +363,10 @@ def manage_templates_view(request):
 @login_required
 def upload_file_view(request):
     domains = DomainTemplate.objects.all()
+
+    latest_upload = (
+        UploadedFile.objects.filter(user=request.user).order_by("-upload_time").first()
+    )
 
     if request.method == "POST":
         request.session.pop("parsed_files", None)
@@ -588,45 +571,25 @@ def upload_file_view(request):
 
         return redirect("upload_file")
 
-    # ---------- GET request ----------
-    # Retrieve stored preview files from session
     parsed_files = request.session.get("parsed_files", None)
 
-    # Validate stored preview files: remove any that are no longer active in DB
+    # Hide latest_upload if we have parsed_files to avoid double preview
     if parsed_files:
-        valid_items = []
-        for item in parsed_files:
-            file_id = item.get("id")
-            if file_id:
-                try:
-                    file_obj = UploadedFile.objects.get(id=file_id, user=request.user)
-                    if file_obj.file_status == "active":
-                        valid_items.append(item)
-                except UploadedFile.DoesNotExist:
-                    pass  # skip, file no longer exists
-        if valid_items:
-            parsed_files = valid_items
-            request.session["parsed_files"] = parsed_files
-        else:
-            request.session.pop("parsed_files", None)
-            parsed_files = None
-
-    # Get the most recent active uploaded file (for the "Latest Upload" card)
-    latest_uploads = UploadedFile.objects.filter(
-    user=request.user,
-    file_status="active"
-    ).order_by("-upload_time")[:3]
-    
+        latest_upload = None
+    elif not latest_upload:
+        request.session.pop("parsed_files", None)
+        parsed_files = None
 
     return render(
         request,
         "upload.html",
         {
-            "latest_uploads": latest_uploads,
+            "latest_upload": latest_upload,
             "domains": domains,
             "parsed_files": parsed_files,
         },
     )
+
 
 @login_required
 def upload_history_view(request):
@@ -661,12 +624,6 @@ def validation_report_view(request, file_id):
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
-
-    AuditLog.objects.create(
-        user=request.user,
-        action_type="Report View",
-        details=f"Viewed validation report for {uploaded_file.file.name}",
-    )
 
     results = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
 
@@ -786,12 +743,6 @@ def delete_file_status_view(request, file_id):
 
     uploaded_file.save()
 
-    AuditLog.objects.create(
-        user=request.user,
-        action_type="Delete" if new_status == "user_deleted" else "File Restored",
-        details=f"Changed status to {new_status}: {uploaded_file.file.name}",
-    )
-
     return JsonResponse({
         "status": uploaded_file.file_status,
         "deleted_at": str(uploaded_file.deleted_at) if uploaded_file.deleted_at else None,
@@ -805,12 +756,6 @@ def download_excel_view(request, file_id):
         uploaded_file = get_object_or_404(UploadedFile, id=file_id)
     else:
         uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user, file_status="active")
-
-    AuditLog.objects.create(
-        user=request.user,
-        action_type="File Download",
-        details=f"Downloaded {uploaded_file.file.name}",
-    )
 
     file_path = uploaded_file.file.path.lower()
     style = request.GET.get("style", "")
