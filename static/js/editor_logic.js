@@ -229,7 +229,10 @@ function markdownToHtml(text) {
 
     return html;
 }
-
+function cleanCriteria(criteria) {
+    if (typeof criteria !== 'string') return criteria;
+    return criteria.replace(/^["']|["']$/g, '').trim();
+}
 // ==========================================
 // 3. ENHANCED FORMULA EVALUATION (with IF, COUNTIF, COUNTA, XLOOKUP, VLOOKUP)
 // ==========================================
@@ -289,6 +292,19 @@ function evaluateFormula(formula, getCellValue) {
                 return falseVal;
             }
         }
+
+        if (func === 'COUNTA') {
+            if (args.length < 1) return '#ERROR';
+            let range = args[0];
+            let cells = getCellsInRange(range, getCellValue);
+            let count = 0;
+            for (let cell of cells) {
+                let val = getCellValue(cell);
+                if (val !== null && val !== "") count++;
+            }
+            return count;
+        }
+
         
         if (func === 'COUNTIF') {
     if (args.length < 2) return '#ERROR';
@@ -297,7 +313,6 @@ function evaluateFormula(formula, getCellValue) {
     let cells = getCellsInRange(range, getCellValue);
     let count = 0;
     
-    // Strip surrounding quotes from criteria
     let cleanCriteria = criteria;
     if (typeof cleanCriteria === 'string') {
         cleanCriteria = cleanCriteria.trim();
@@ -332,18 +347,34 @@ function evaluateFormula(formula, getCellValue) {
     }
     return count;
 }
+
+console.log("COUNTIF criteria (cleaned):", cleanCriteria);
+    
+    for (let cell of cells) {
+        let val = getCellValue(cell);
+        let match = false;
         
-        if (func === 'COUNTA') {
-            if (args.length < 1) return '#ERROR';
-            let range = args[0];
-            let cells = getCellsInRange(range, getCellValue);
-            let count = 0;
-            for (let cell of cells) {
-                let val = getCellValue(cell);
-                if (val !== null && val !== "") count++;
-            }
-            return count;
+        if (cleanCriteria.startsWith('>') || cleanCriteria.startsWith('<') || cleanCriteria.startsWith('=')) {
+            let op = cleanCriteria.match(/[<>]=?/)[0];
+            let target = parseFloat(cleanCriteria.slice(op.length));
+            let num = parseFloat(val);
+            if (isNaN(num)) continue;
+            if (op === '>' && num > target) match = true;
+            else if (op === '<' && num < target) match = true;
+            else if (op === '>=' && num >= target) match = true;
+            else if (op === '<=' && num <= target) match = true;
+            else if (op === '=' && num == target) match = true;
+        } else {
+            // String comparison – trim and compare
+            let cleanVal = (typeof val === 'string') ? val.trim() : val;
+            let cleanCrit = (typeof cleanCriteria === 'string') ? cleanCriteria.trim() : cleanCriteria;
+            match = (cleanVal == cleanCrit);
         }
+        if (match) count++;
+    }
+    return count;
+}
+        
         
         if (func === 'XLOOKUP') {
     if (args.length < 3) return '#ERROR';
@@ -370,7 +401,7 @@ function evaluateFormula(formula, getCellValue) {
     return ifNotFound;
 }
         
-        if (func === 'VLOOKUP') {
+       if (func === 'VLOOKUP') {
     if (args.length < 3) return '#ERROR';
     let lookupValue = args[0];
     let tableArray = args[1];
@@ -396,12 +427,12 @@ function evaluateFormula(formula, getCellValue) {
             }
             return '#N/A';
         }
-    }
     return '#N/A';
 }
         
         return '#NAME?';
     }
+
     
     try {
         let evalExpr = expr.replace(/[A-Z]+[0-9]+/gi, (ref) => {
@@ -861,22 +892,54 @@ headers.forEach((th, idx) => {
                             explainBtn.style.display = 'none';
                             explainBtn.onclick = (e) => {
                                 e.stopPropagation();
-                                const panel = document.createElement('div');
-                                panel.className = 'floating-explanation-panel';
-                                panel.innerHTML = `
-                                    <div class="ai-explanation-box">
-                                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
-                                        <div class="ai-content">${data.error_message}</div>
-                                    </div>
-                                    <button class="close-explanation">×</button>
-                                `;
-                                document.body.appendChild(panel);
-                                panel.querySelector('.close-explanation').onclick = () => panel.remove();
-                                setTimeout(() => panel.remove(), 8000);
-                            };
-                            cell.appendChild(explainBtn);
-                            cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
-                            cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
+                                const payload = { 
+            result_id: tempId, 
+            column_name: columnName, 
+            cell_value: currentValue, 
+            rule_error: data.error_message 
+        };
+
+        fetch('/ai-explain/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.DJANGO_VARS.csrfToken },
+        body: JSON.stringify({
+            result_id: -1, // Indicates live validation
+            cell_value: currentValue,
+            column_name: columnName,
+            rule_error: data.error_msg,
+            file_id: window.DJANGO_VARS.fileId,
+            row_data: rowData  
+        })
+    })
+        .then(res => res.json())
+        .then(aiData => {
+            if (typeof showExplanationPanel === 'function') {
+                showExplanationPanel(aiData.explanation);
+            } else {
+                const panel = document.createElement('div');
+                panel.className = 'floating-explanation-panel';
+                panel.innerHTML = `
+                    <div class="ai-explanation-box">
+                        <div class="ai-insight-header">✨ Intelligent Auditor Analysis</div>
+                        <div class="ai-content">${aiData.explanation}</div>
+                    </div>
+                    <button class="close-explanation">×</button>
+                `;
+                document.body.appendChild(panel);
+                panel.querySelector('.close-explanation').onclick = () => panel.remove();
+                setTimeout(() => panel.remove(), 8000);
+            }
+            console.log(aiData.explanation);
+        })
+        .catch(err => {
+            console.error(err);
+            if (typeof showExplanationPanel === 'function') showExplanationPanel("Error connecting to AI.");
+        });
+    };
+    
+    cell.appendChild(explainBtn);
+    cell.addEventListener('mouseenter', () => explainBtn.style.display = 'inline-block');
+    cell.addEventListener('mouseleave', () => explainBtn.style.display = 'none');
                         }
                     }
                 } else {
@@ -1206,18 +1269,18 @@ window.handleMappingChange = (sel) => {
 // ==========================================
 // 7. KEYBOARD NAVIGATION
 // ==========================================
+// ==========================================
+// 7. KEYBOARD NAVIGATION
+// ==========================================
 function attachKeyboardNavigation() {
     document.addEventListener('keydown', (e) => {
         const formulaInput = document.getElementById('formulaInput');
         if (document.activeElement === formulaInput) return;
 
-        // Allow normal editing inside contenteditable cells – don't interfere
         if (activeCell && document.activeElement === activeCell) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                // Save the current value (already in the cell)
-                updateCellFromFormulaBar(); // this also updates cellFormulas and valueDisplay
-                // Move focus to the cell below
+                updateCellFromFormulaBar(); 
                 const row = activeCell.parentElement;
                 const tbody = document.getElementById('tableBody');
                 const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -1229,11 +1292,9 @@ function attachKeyboardNavigation() {
                 }
                 return;
             }
-            // Let other keys (letters, backspace, etc.) work normally
             return;
         }
 
-        // Global undo/redo
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
         if (!activeCell) return;
@@ -1256,6 +1317,7 @@ function attachKeyboardNavigation() {
         }
     });
 }
+
 
 // ==========================================
 // 8. SAVE WORKBOOK
@@ -1555,6 +1617,9 @@ explainBtn.onclick = (e) => {
         }
     });
 }
+
+console.log("DEBUG: recommendations data:", window.DJANGO_VARS.recommendations);
+console.log("DEBUG: recommendations length:", window.DJANGO_VARS.recommendations ? window.DJANGO_VARS.recommendations.length : 'undefined');
 
     // --- Recommendations panel (always visible, placed after status bar) ---
 const targetContainer = document.getElementById('recommendationsTarget');

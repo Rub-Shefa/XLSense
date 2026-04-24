@@ -109,8 +109,7 @@ def validate_excel_data(uploaded_file_obj):
         # 1. BUILD ROBUST ROW CONTEXT
         # =========================================================
         row_context = {}
-        # Ensure mappings are NEVER None
-        saved_mappings = getattr(uploaded_file_obj, "column_mappings", {}) or {}
+        saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
 
         for key, val_str in row.items():
             if pd.isna(key) or str(key).strip() == "": 
@@ -129,6 +128,7 @@ def validate_excel_data(uploaded_file_obj):
             row_context[clean_key] = parsed_val
             row_context[clean_key.title()] = parsed_val
             
+            # B. CRITICAL: Add the MAPPED name to context
             if key in saved_mappings:
                 db_name = saved_mappings[key]
                 row_context[db_name] = parsed_val
@@ -227,45 +227,29 @@ def validate_excel_data(uploaded_file_obj):
 
 def get_formula_recommendations(uploaded_file_obj, df_columns):
     from .models import FormulaRule, ValidationRule
-    from .utils import preprocess_dataframe, remove_empty_unnamed_columns, ai_match_columns, find_best_column
-    import pandas as pd
+    from .utils import find_best_column
 
+    print(f"DEBUG: File name: {uploaded_file_obj.file.name}")
+    print(f"DEBUG: Contains '_edited'? {'_edited' in uploaded_file_obj.file.name}")
+    if "_edited" in uploaded_file_obj.file.name:
+        print("DEBUG: Returning empty because file is edited")
+        return []
     template = uploaded_file_obj.template
+    
+    # Get all columns defined in the DB for this template
     validation_cols = set(ValidationRule.objects.filter(template=template).values_list('column_name', flat=True))
     formula_cols = set(FormulaRule.objects.filter(template=template).values_list('target_column', flat=True))
     all_domain_cols = validation_cols.union(formula_cols)
 
-    file_path = uploaded_file_obj.file.path
-    if file_path.endswith('.csv'):
-        df = pd.read_csv(file_path)
-    else:
-        df = pd.read_excel(file_path)
-    
-    df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed")]
-    df = preprocess_dataframe(df)
-    df = remove_empty_unnamed_columns(df)
-
-    actual_columns = list(df.columns)
-
+    # Get what is actually mapped in the file
     saved_mappings = getattr(uploaded_file_obj, "column_mappings", {})
-    
-    reverse_map = {}
-    
-    if saved_mappings:
-        for file_col, db_col in saved_mappings.items():
-            reverse_map[db_col] = file_col
-    else:
-        if actual_columns and all_domain_cols:
-            ai_mapping = ai_match_columns(actual_columns, list(all_domain_cols))
-            for file_col, db_col in ai_mapping.items():
-                reverse_map[db_col] = file_col
+    mapped_db_cols = set(saved_mappings.values())
 
     recommendations = []
-    for domain_col in all_domain_cols:
-        actual_col = reverse_map.get(domain_col) or find_best_column(domain_col, actual_columns)
-        exists = actual_col is not None
 
-        if not exists:
+    for domain_col in all_domain_cols:
+        # If the DB column is NOT in our saved mappings, it is missing!
+        if domain_col not in mapped_db_cols:
             formula_rule = FormulaRule.objects.filter(template=template, target_column=domain_col).first()
             if formula_rule:
                 formula = formula_rule.condition_expression
@@ -274,7 +258,11 @@ def get_formula_recommendations(uploaded_file_obj, df_columns):
                 formula = "None (Manual Data Entry)" 
                 message = f"Suggested: Create '{domain_col}' column (required for validation)."
             
-            recommendations.append({"column": domain_col, "formula": formula, "message": message})
+            recommendations.append({
+                "column": domain_col, 
+                "formula": formula, 
+                "message": message
+            })
             
     return recommendations
 
@@ -375,7 +363,6 @@ def preprocess_dataframe(df):
     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
 
     df.replace(r"^\s*$", pd.NA, regex=True, inplace=True)
-
     for col in df.columns:
         # This works whether it's a Series or a DataFrame with one column
         if pd.api.types.is_object_dtype(df[col]):
