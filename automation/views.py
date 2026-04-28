@@ -364,9 +364,10 @@ def manage_templates_view(request):
 def upload_file_view(request):
     domains = DomainTemplate.objects.all()
 
-    latest_upload = (
-        UploadedFile.objects.filter(user=request.user).order_by("-upload_time").first()
-    )
+    latest_uploads = UploadedFile.objects.filter(
+    user=request.user,
+    file_status="active"
+    ).order_by("-upload_time")[:3]
 
     if request.method == "POST":
         request.session.pop("parsed_files", None)
@@ -573,18 +574,33 @@ def upload_file_view(request):
 
     parsed_files = request.session.get("parsed_files", None)
 
-    # Hide latest_upload if we have parsed_files to avoid double preview
+    # remove deleted files from preview
     if parsed_files:
-        latest_upload = None
-    elif not latest_upload:
-        request.session.pop("parsed_files", None)
-        parsed_files = None
+        valid_ids = set(
+            UploadedFile.objects.filter(
+            user=request.user,
+            file_status="active"
+            ).values_list("id", flat=True)
+        )
+
+        parsed_files = [f for f in parsed_files if f.get("id") in valid_ids]
+
+        if not parsed_files:
+            request.session.pop("parsed_files", None)
+            parsed_files = None
+        else:
+            request.session["parsed_files"] = parsed_files
+
+        # update session
+        request.session["parsed_files"] = parsed_files
+
+ 
 
     return render(
         request,
         "upload.html",
         {
-            "latest_upload": latest_upload,
+            "latest_uploads": latest_uploads,
             "domains": domains,
             "parsed_files": parsed_files,
         },
