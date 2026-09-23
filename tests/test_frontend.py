@@ -12,7 +12,7 @@ class TestHomepageView:
         response = client.get(reverse("homepage"))
         assert response.status_code == 200
         content = response.content.decode("utf-8")
-        assert "Intelligent Data Validation" in content
+        assert "Intelligent Data Workflow and Spreadsheet Automation Platform" in content
 
     def test_homepage_contains_features_section(self, client):
         response = client.get(reverse("homepage"))
