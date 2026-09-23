@@ -21,7 +21,6 @@ def workbook_editor_view(request, file_id):
     template = uploaded_file.template
     file_path = uploaded_file.file.path
 
-    # Get domain columns (same as before)
     val_cols = list(ValidationRule.objects.filter(template=template).values_list("column_name", flat=True))
     form_cols = list(FormulaRule.objects.filter(template=template).values_list("target_column", flat=True))
     db_columns = list(set(val_cols + form_cols))
@@ -47,32 +46,27 @@ def workbook_editor_view(request, file_id):
     saved_mappings = getattr(uploaded_file, "column_mappings", {})
 
     try:
-        # Check file extension to determine how to load
         file_ext = os.path.splitext(file_path)[1].lower()
         is_csv = file_ext == ".csv"
 
         if is_csv:
-            # Load CSV with pandas (no formulas in CSV)
             df = pd.read_csv(file_path, dtype=str)
             df = df.fillna("")
             headers = list(df.columns)
             raw_values = df.values.tolist()
             raw_formulas = [[None for _ in headers] for _ in raw_values]
         else:
-            # Load Excel workbook with openpyxl
             from openpyxl import load_workbook
             wb_formula = load_workbook(file_path, data_only=False)
             ws_formula = wb_formula.active
             wb_value = load_workbook(file_path, data_only=True)
             ws_value = wb_value.active
 
-            # Extract header (first row)
             headers = []
             for cell_f, cell_v in zip(next(ws_formula.iter_rows(min_row=1, max_row=1)), 
                                       next(ws_value.iter_rows(min_row=1, max_row=1))):
                 headers.append(cell_v.value if cell_v.value is not None else "")
 
-            # Data rows (from row 2 onward)
             raw_values = []
             raw_formulas = []
             for row_f, row_v in zip(ws_formula.iter_rows(min_row=2), ws_value.iter_rows(min_row=2)):
@@ -87,7 +81,6 @@ def workbook_editor_view(request, file_id):
                 raw_values.append(val_row)
                 raw_formulas.append(formula_row)
 
-        # Create DataFrames with proper column names
         df = pd.DataFrame(raw_values, columns=headers)
         formulas_df = pd.DataFrame(raw_formulas, columns=headers)
 
@@ -98,7 +91,7 @@ def workbook_editor_view(request, file_id):
         df = df.loc[:, ~cols_to_drop]
         formulas_df = formulas_df.loc[:, ~cols_to_drop]
 
-        # 2. Rename columns (both DataFrames get same new names)
+        # 2. Rename columns 
         new_cols = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
         df.columns = new_cols
         formulas_df.columns = new_cols
@@ -121,7 +114,6 @@ def workbook_editor_view(request, file_id):
         df = df[rows_to_keep]
         formulas_df = formulas_df[rows_to_keep]
 
-        # Reset index after row removal
         df = df.reset_index(drop=True)
         formulas_df = formulas_df.reset_index(drop=True)
 
@@ -135,7 +127,6 @@ def workbook_editor_view(request, file_id):
         if is_first_load:
             ai_matches = ai_match_columns(user_columns_original, db_columns)
 
-        # Process user columns
         for col in user_columns_original:
             matched_db = None
             if saved_mappings and col in saved_mappings:
@@ -154,10 +145,8 @@ def workbook_editor_view(request, file_id):
 
         matched_cols = [c["matched_db"] for c in columns_with_classes if c["matched_db"]]
         
-        # Check if the file name contains "edited" (using .lower() just to be safe)
         is_edited_file = "edited" in uploaded_file.file.name.lower()
 
-        # ONLY add missing columns if it is the ORIGINAL file
         if not is_edited_file:
             for db_col in db_columns:
                 # If a required template column is missing from the user's file
@@ -200,10 +189,7 @@ def workbook_editor_view(request, file_id):
     style_data_json = json.dumps(style_data)
     formulas_data_json = json.dumps(formulas_data)
 
-    # Run validation on the file (now it has the mappings!)
     validate_excel_data(uploaded_file)
-
-    # Get all validation errors for this file
     errors = ValidationResult.objects.filter(file=uploaded_file, is_valid=False)
     errors_data = [
          {
@@ -215,7 +201,6 @@ def workbook_editor_view(request, file_id):
          for err in errors
         ]
 
-    # Get formula recommendations
     recommendations = get_formula_recommendations(uploaded_file, df.columns)
     print("RECOMMENDATIONS FROM BACKEND:", recommendations)
 
@@ -231,7 +216,7 @@ def workbook_editor_view(request, file_id):
         "formulas_data_json": formulas_data_json,
         "errors_data_json": json.dumps(errors_data),        
         "recommendations_json": json.dumps(recommendations), 
-        "is_draft": uploaded_file.status != "Completed" # --- ADDED THE DRAFT FLAG ---
+        "is_draft": uploaded_file.status != "Completed" 
     })
 
 
@@ -375,14 +360,12 @@ def validate_single_cell(request):
     file_id = data.get('file_id')
     column_name = data.get('column')
     value = data.get('value')
-    # Use .get with default to prevent 'None' type errors on row index
     row_index = (data.get('row') or 1) - 1  
     row_data = data.get('rowData', {}) 
     
     uploaded_file = get_object_or_404(UploadedFile, id=file_id, user=request.user)
     template = uploaded_file.template
     
-    # 1. FETCH THE SAVED MAPPINGS
     saved_mappings = getattr(uploaded_file, "column_mappings", {})
     
     from .models import ValidationRule
@@ -393,11 +376,23 @@ def validate_single_cell(request):
     
     target_norm = normalize(column_name)
     matched_rule = None
+    
+    # 1. Try direct rule match by column name
     for rule in rules:
-        rule_norm = normalize(rule.column_name)
-        if rule_norm == target_norm:
+        if normalize(rule.column_name) == target_norm:
             matched_rule = rule
             break
+    
+    # 2. If not found, check if this file column is mapped to a DB column that has a rule
+    if not matched_rule:
+        for file_col, db_col in saved_mappings.items():
+            if normalize(file_col) == target_norm:
+                for rule in rules:
+                    if normalize(rule.column_name) == normalize(db_col):
+                        matched_rule = rule
+                        break
+                if matched_rule:
+                    break
     
     if not matched_rule:
         return JsonResponse({'is_valid': True})
@@ -410,12 +405,12 @@ def validate_single_cell(request):
             
         allowed_locals = {'x': val, 'index': row_index}
         
-        # 2. INJECT ROW DATA & MAPPED NAMES
         for key, val_str in row_data.items():
-            if not key: continue
-            
+            if not key:
+                continue
             clean_key = str(key).replace(" ", "") 
             
+            # Parse numeric values
             if val_str is not None and str(val_str).replace('.', '', 1).replace('-', '', 1).isdigit():
                 parsed_val = float(val_str)
             else:
@@ -423,45 +418,25 @@ def validate_single_cell(request):
                 if parsed_val == "" and ("<" in matched_rule.condition_expression or ">" in matched_rule.condition_expression):
                     parsed_val = 0
                 
-            # Inject original JS variations
             allowed_locals[clean_key] = parsed_val              
             allowed_locals[clean_key.lower()] = parsed_val      
             allowed_locals[clean_key.upper()] = parsed_val      
             allowed_locals[clean_key.title()] = parsed_val      
             allowed_locals[clean_key.capitalize()] = parsed_val 
             
-            # --- THE FIX: INJECT THE MAPPED NAME ---
-            # We compare the normalized keys because JS sometimes changes headers (e.g., adds underscores)
             for excel_col, db_col in saved_mappings.items():
                 if normalize(excel_col) == normalize(key):
-                    # Inject the mapped name (e.g., 'Bonus') so Python eval() can find it!
                     allowed_locals[db_col] = parsed_val
                     allowed_locals[str(db_col).replace(" ", "")] = parsed_val
-                
+        
         allowed_globals = {
             '__builtins__': None, 
             'str': str, 'int': int, 'float': float, 
             'len': len, 'abs': abs, 'round': round,
-            'isinstance': isinstance, 'type': type # Added for your ID check
+            'isinstance': isinstance, 'type': type
         }
-
-        # --- NEW DEBUG CODE ---
-        print("\n=== LIVE VALIDATION DEBUG ===")
-        print(f"Rule Expression: {matched_rule.condition_expression}")
-        print(f"Cell Value (x): '{val}'")
-        print(f"Row Data from JS: {row_data}")
-        # Note: getattr(uploaded_file, "column_mappings", {}) must be defined earlier in the function for this to print
-        try:
-            print(f"Database Mappings: {getattr(uploaded_file, 'column_mappings', {})}")
-        except:
-            print("Database Mappings: Not found in this scope")
-        print(f"Variables injected to Python: {allowed_locals.keys()}")
-        print("=============================\n")
-        # ----------------------
         
-        # Strip any accidental leading/trailing whitespace from the formula
         condition = matched_rule.condition_expression.strip()
-        
         is_valid = bool(eval(condition, allowed_globals, allowed_locals))
         error_msg = matched_rule.error_message if not is_valid else ''
         

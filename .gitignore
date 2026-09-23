@@ -27,3 +27,6 @@ uploads/*
 
 # Worktrees
 .worktrees/
+
+# Local editor configuration
+.vscode/

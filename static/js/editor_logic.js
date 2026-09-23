@@ -223,7 +223,6 @@ function restoreState(state) {
     }
 }
 
-// 🛠️ THE FIX: Reusable function so your CSS stays perfect everywhere
 function showExplanationPanel(message) {
     const panel = document.createElement('div');
     panel.className = 'floating-explanation-panel';
@@ -615,7 +614,6 @@ window.showFormulaHint = function(typedText) {
     }
     
     let upperText = typedText.toUpperCase().trim();
-    // Sort keys by length descending so "COUNTA" matches before "COUNT"
     let foundKey = null;
     const sortedKeys = Object.keys(formulaTemplates).sort((a,b) => b.length - a.length);
     for (let key of sortedKeys) {
@@ -792,7 +790,6 @@ function updateValueDisplayForCell(cell) {
     }
 }
 
-// --- Multi-cell selection helpers ---
 function clearSelection() {
     selectedCells.forEach(cell => {
         cell.classList.remove('range-selected');
@@ -927,7 +924,6 @@ function attachCellEvents() {
         }
         updateValueDisplayForCell(cell);
         
-        // Get column name from header
         const colIndex = cell.cellIndex;
         const headerCell = document.querySelector(`#headerRow th:nth-child(${colIndex+1}) .header-label`);
         const columnName = headerCell ? headerCell.innerText.trim() : '';
@@ -1054,7 +1050,6 @@ function updateCellFromFormulaBar() {
     captureState();
 }
 
-// Formula Bar Listeners
 const fBar = document.getElementById('formulaInput');
 if (fBar) {
     fBar.addEventListener('change', updateCellFromFormulaBar);
@@ -1088,7 +1083,6 @@ if (formulaInput) {
     });
 }
 
-// Function Buttons (SUM, MIN, etc)
 document.querySelectorAll('.func-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1699,6 +1693,7 @@ explainBtn.onclick = (e) => {
 
 console.log("DEBUG: recommendations data:", window.DJANGO_VARS.recommendations);
 console.log("DEBUG: recommendations length:", window.DJANGO_VARS.recommendations ? window.DJANGO_VARS.recommendations.length : 'undefined');
+
 
     // --- Recommendations panel (always visible, placed after status bar) ---
 const targetContainer = document.getElementById('recommendationsTarget');
