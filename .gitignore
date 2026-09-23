@@ -12,8 +12,6 @@ env/
 db.sqlite3
 database/
 
-# Documentation
-docs/
 
 AGENTS.md
 
